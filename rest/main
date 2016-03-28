@@ -1,0 +1,65 @@
+/*package main
+
+import "github.com/gin-gonic/gin"
+
+func main() {
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.Default()
+	resource := openСonnection()
+
+	common := router.Group("/db/api/")
+	{
+		common.POST("clear/", resource.commonClear)
+		common.GET("status/", resource.commonStatus)
+	}
+
+	forum := router.Group("/db/api/forum/")
+	{
+		forum.POST("create/", resource.forumCreate)
+		forum.GET("details/", resource.forumDetails)
+		forum.GET("listPosts/", resource.forumListPosts)
+		forum.GET("listThreads/", resource.forumListThreads)
+		forum.GET("listUsers/", resource.forumListUsers)
+	}
+
+	post := router.Group("/db/api/post/")
+	{
+		post.POST("create/", resource.postCreate)
+		post.GET("details/", resource.postDetails)
+		post.GET("list/", resource.postList)
+		post.POST("remove/", resource.postRemove)
+		post.POST("restore/", resource.postRestore)
+		post.POST("update/", resource.postUpdate)
+		post.POST("vote/", resource.postVote)
+	}
+
+	user := router.Group("/db/api/user/")
+	{
+		user.POST("create/", resource.userCreate)
+		user.GET("details/", resource.userDetails)
+		user.POST("follow/", resource.userFollow)
+		user.GET("listFollowers/", resource.userListFollowers)
+		user.GET("listFollowing/", resource.userListFollowing)
+		user.GET("listPosts/", resource.userListPosts)
+		user.POST("unfollow/", resource.userUnfollow)
+		user.POST("updateProfile/", resource.userUpdateProfile)
+	}
+
+	thread := router.Group("/db/api/thread/")
+	{
+		thread.POST("close/", resource.threadClose)
+		thread.POST("create/", resource.threadCreate)
+		thread.GET("details/", resource.threadDetails)
+		thread.GET("list/", resource.threadList)
+		thread.GET("listPosts/", resource.threadListPosts)
+		thread.POST("open/", resource.threadOpen)
+		thread.POST("remove/", resource.threadRemove)
+		thread.POST("restore/", resource.threadRestore)
+		thread.POST("subscribe/", resource.threadSubscribe)
+		thread.POST("unsubscribe/", resource.threadUnsubscribe)
+		thread.POST("update/", resource.threadUpdate)
+		thread.POST("vote/", resource.threadVote)
+	}
+
+	router.Run(":5000")
+} */
