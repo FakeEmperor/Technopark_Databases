@@ -65,6 +65,6 @@ func main() {
 	restApi := rest.CreateRestApi()
 
 	log.Printf("[ * ] Beggining to listen on localhost:8080")
-	server := &http.Server{Addr: ":8080", Handler: restApi.Container }
+	server := &http.Server{Addr: ":5000", Handler: restApi.Container }
 	log.Fatal(server.ListenAndServe())
 }
