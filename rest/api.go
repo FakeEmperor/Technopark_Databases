@@ -3,8 +3,9 @@ package rest
 import (
 	"github.com/emicklei/go-restful"
 	"database/sql"
-	"gopkg.in/gorp.v1"
+	"github.com/jmoiron/sqlx"
 	"log"
+	"strconv"
 )
 
 
@@ -13,7 +14,7 @@ import (
 
 type RestApi struct {
 	Db *sql.DB
-	DbMap gorp.DbMap
+	DbSqlx *sqlx.DB
 
 	Container *restful.Container
 }
@@ -35,11 +36,13 @@ func CreateRestApi() *RestApi {
 	var err error
 	api := new(RestApi)
 	api.Db, err = CreateConnector()
-	api.DbMap = gorp.DbMap{Db: api.Db, Dialect: gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}}
+	api.DbSqlx = sqlx.NewDb(api.Db, "mysql")
 	api.Container = wsContainer
 	api.registerCommonApi()
 	api.registerUserApi()
 	api.registerForumApi()
+	api.registerThreadApi()
+	api.registerPostApi()
 	var _ = err;
 	return api
 }
@@ -52,4 +55,9 @@ func globalLogging(request *restful.Request, response *restful.Response, chain *
 
 func pnh(response *restful.Response, code int, err error) {
 	response.WriteEntity(createResponse(code, err.Error()))
+}
+
+
+func toInt64(s string) (int64, error) {
+	return strconv.ParseInt(s, 10, 64)
 }

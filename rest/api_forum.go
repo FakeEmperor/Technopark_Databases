@@ -2,16 +2,16 @@ package rest
 
 import (
 	"github.com/emicklei/go-restful"
-	"gopkg.in/gorp.v1"
 	"log"
+	"github.com/jmoiron/sqlx"
 )
 
 
 type Forum struct {
-	Id        int64		`db:"id" json:"id"`
-	ShortName string	`db:"short_name" json:"short_name"`
-	Name      string	`db:"name" json:"name"`
-	User      interface{}	`db:"user" json:"user"` /* Can be string or interface{} */
+	Id		int64		`db:"id" json:"id"`
+	ShortName	string		`db:"short_name" json:"short_name"`
+	Name		string		`db:"name" json:"name"`
+	User		interface{}	`db:"user" json:"user"` /* Can be string or interface{} */
 }
 
 func (api *RestApi) registerForumApi() {
@@ -24,20 +24,29 @@ func (api *RestApi) registerForumApi() {
 	ws.Route(ws.POST("/create").To(api.forumPostCreate))
 	ws.Route(ws.GET("/listUsers").To(api.forumGetListUsers))
 	ws.Route(ws.GET("/listPosts").To(api.forumGetListPosts))
+	ws.Route(ws.GET("/listThreads").To(api.forumGetListThreads))
+
 	api.Container	.Add(ws)
 }
 
-func forumByShortName(shortName string, db *gorp.DbMap) (*Forum, error ) {
+func forumByShortName(shortName string, db *sqlx.DB) (*Forum, error ) {
 	forum := new(Forum)
-	err := db.SelectOne(&forum, "SELECT * FROM forum WHERE short_name = ?", shortName)
+	err := db.Get(forum, "SELECT * FROM Forum WHERE short_name = ?", shortName)
+	forum.User = string(forum.User.([]uint8))
 	return forum, err
 }
+/*
+func forumById(id int64, db *sqlx.DB) (*Forum, error) {
+	forum := new(Forum)
+	err := db.SelectOne(&forum, "SELECT * FROM forum WHERE id = ?", id)
+	return forum, err
+} */
 
 func (api *RestApi) forumPostCreate(request *restful.Request, response *restful.Response) {
 	var forum Forum
 	request.ReadEntity(&forum)
 	log.Printf("Got from request:\n %+v", forum)
-	result, err := api.DbMap.Exec("INSERT INTO Forum (name, short_name, user) VALUES (?, ?, ?)", forum.Name, forum.ShortName, forum.User)
+	result, err := api.DbSqlx.Exec("INSERT INTO Forum (name, short_name, user) VALUES (?, ?, ?)", forum.Name, forum.ShortName, forum.User)
 	if err != nil {
 		response.WriteEntity(createResponse(API_QUERY_INVALID, err.Error()))
 	} else {
@@ -48,15 +57,15 @@ func (api *RestApi) forumPostCreate(request *restful.Request, response *restful.
 
 
 func (api *RestApi) forumGetDetails(request *restful.Request, response *restful.Response) {
-	forum, err := forumByShortName(request.QueryParameter("forum"), &api.DbMap)
+	forum, err := forumByShortName(request.QueryParameter("forum"), api.DbSqlx)
 	if err != nil {
-		response.WriteEntity(createResponse(API_QUERY_INVALID, err.Error()))
+		pnh(response, API_QUERY_INVALID, err)
 		return
 	}
 	for _, entity := range request.Request.URL.Query()["related"] {
 		if entity == "user" {
 			log.Printf("user string is: %s", forum.User)
-			user, _ := userByEmail(string(forum.User.([]uint8)), &api.DbMap)
+			user, _ := userByEmail(forum.User.(string), api.DbSqlx)
 			forum.User = user;
 			break;
 		}
@@ -74,8 +83,15 @@ var (
 func (api *RestApi) forumGetListPosts(request *restful.Request, response *restful.Response) {
 	var posts []Post
 	related, err :=
-	execListQuery(request,  &posts , &api.DbMap, "*", "Post", "forum_id",
-			request.QueryParameter("forum"), "since", "date", "date", false);
+	execListQuery(
+		ExecListParams{
+			request: request, resultContainer: &posts, db: api.DbSqlx,
+			selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "forum",
+			selectWhereWhat: request.QueryParameter("forum"), selectWhereIsInnerSelect: false,
+			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
+			joinEnabled: true, joinTables: []string{ "Message" } ,
+			joinConditions: []string{ "id" }, joinByUsingStatement: true,
+			limitEnabled: true } );
 	if err != nil {
 		response.WriteEntity(createResponse(API_QUERY_INVALID, err.Error()))
 		return
@@ -90,23 +106,37 @@ func (api *RestApi) forumGetListPosts(request *restful.Request, response *restfu
 			relatedThread = true
 		}
 	}
-	for _, post := range posts {
+	for index, post := range posts {
+		backToUTF(&post.User, &post.Forum)
+		post.getPoints(api.DbSqlx)
 		if relatedUser {
-			post.User, _ = userByEmail(post.User.(string), &api.DbMap)
+			posts[index].User, _ = userByEmail(post.User.(string), api.DbSqlx)
 		}
 		if relatedForum {
-			post.Forum, _ = forumByShortName(post.Forum.(string), &api.DbMap)
+			posts[index].Forum, _ = forumByShortName(post.Forum.(string), api.DbSqlx)
 		}
 		if relatedThread {
-			 post.Thread, _ = threadById(post.Thread.(int), &api.DbMap)
+			posts[index].Thread, _ = threadById(post.Thread.(int64), api.DbSqlx)
 		}
 	}
-	/* MAGIC ENDS HERE */
+	if posts == nil { posts = []Post{} }
 	response.WriteEntity(createResponse(0, posts))
 }
-/*
+
 func (api *RestApi) forumGetListThreads(request *restful.Request, response *restful.Response) {
-	related, relatedUser, relatedForum := context.Request.URL.Query()["related"], false, false
+	var threads []Thread
+	related, err := execListQuery(
+		ExecListParams{
+			request: request, resultContainer: &threads, db: api.DbSqlx,
+			selectWhat: "*", selectFromWhat: "Message", selectWhereColumn: "forum",
+			selectWhereWhat: request.QueryParameter("forum"), selectWhereIsInnerSelect: false,
+			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
+			joinEnabled: true, joinTables: []string{ "Thread" },
+			joinConditions: []string{ "id" }, joinByUsingStatement: true,
+			limitEnabled: true })
+
+	if err != nil { pnh(response, API_UNKNOWN_ERROR, err); return; }
+	relatedUser, relatedForum := false, false
 	for _, entity := range related {
 		if entity == "user" {
 			relatedUser = true
@@ -114,38 +144,38 @@ func (api *RestApi) forumGetListThreads(request *restful.Request, response *rest
 			relatedForum = true
 		}
 	}
-	query := "SELECT * FROM thread WHERE forum = " + "\"" + request.QueryParameter("forum") + "\""
-	if since := request.QueryParameter("since"); since != "" {
-		query += " AND date >= " + "\"" + since + "\""
-	}
-	query += " ORDER BY date " + context.DefaultQuery("order", "DESC")
-	if limit := request.QueryParameter("limit"); limit != "" {
-		query += " LIMIT " + limit
-	}
-	var threads []Thread
-	api.DbMap.Select(&threads, query)
-	response := make([]gin.H, len(threads))
 	for index, thread := range threads {
-		response[index] = gin.H{"date": thread.Date, "dislikes": thread.Dislikes, "forum": thread.Forum, "id": thread.ID, "isClosed": thread.IsClosed, "isDeleted": thread.IsDeleted, "likes": thread.Likes, "message": thread.Message, "points": thread.Points, "posts": thread.Posts, "slug": thread.Slug, "title": thread.Title, "user": thread.User}
+		backToUTF(&thread.User, &thread.Forum)
+		thread.getPoints(api.DbSqlx)
+		api.DbSqlx.Get(&threads[index].Posts, "SELECT COUNT(Post.id) FROM Message JOIN "+
+						" Post ON Post.id = Message.id AND Message.status_is_deleted = 0 "+
+						" WHERE Post.thread_id = ?", thread.Id)
 		if relatedUser {
-			response[index]["user"] = db.userByEmail(response[index]["user"].(string))
+			threads[index].User, _ = userByEmail(thread.User.(string), api.DbSqlx)
 		}
 		if relatedForum {
-			response[index]["forum"] = db.forumByShortName(response[index]["forum"].(string))
+			threads[index].Forum, _ = forumByShortName(thread.Forum.(string), api.DbSqlx)
 		}
 	}
-	context.JSON(200, gin.H{"code": 0, "response": response})
+	if threads == nil { threads = []Thread{} }
+	response.WriteEntity(createResponse(0, threads))
 }
-*/
+
 func (api *RestApi) forumGetListUsers(request *restful.Request, response *restful.Response) {
 	var emails []string;
-	_, err := execListQuery(request, &emails, &api.DbMap, "email", "User", "email",
-		"(SELECT DISTINCT user FROM Message WHERE forum_id = \"" + request.QueryParameter("forum") + "\")",
-		"since_id", "id", "name", true)
+	_, err := execListQuery(
+		ExecListParams{
+			request: request, resultContainer: &emails, db: api.DbSqlx,
+			selectWhat: "email", selectFromWhat: "User", selectWhereColumn: "email",
+			selectWhereWhat: "(SELECT DISTINCT user FROM Message WHERE forum = \"" + request.QueryParameter("forum") + "\")",
+			selectWhereIsInnerSelect: true,
+			sinceParamName: "since_id", sinceByWhat: "id", orderByWhat: "name",
+			joinEnabled: false, joinTables: nil, joinConditions: nil, joinByUsingStatement: true,
+			limitEnabled: true } )
 	if err != nil { pnh(response, API_QUERY_INVALID, err); return }
 	users := make([]FilledUser, len(emails))
 	for index, email := range emails {
-		tmp, _ := userByEmail(email, &api.DbMap);
+		tmp, _ := userByEmail(email, api.DbSqlx);
 		users[index] = *tmp
 	}
 	response.WriteEntity(createResponse(0, users))

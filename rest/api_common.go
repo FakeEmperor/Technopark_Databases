@@ -2,6 +2,7 @@ package rest
 
 import (
 	"github.com/emicklei/go-restful"
+	"log"
 )
 
 type Status struct {
@@ -14,16 +15,21 @@ type Status struct {
 
 func (api *RestApi) commonPostClear(request *restful.Request, response *restful.Response) {
 	truncate_tables := []string{
-		"UserSubscriptions",  "UserFollowers", "UserMessageRate",
+		"UserSubscription",  "UserFollowers", "UserMessageRate",
 		"Post", "Thread", "Message", "Forum", "User" }
+	log.Print("[ D ] Requested CLEAR...")
 	errs := make([]error, len(truncate_tables))
 	hasError := false
+	tr, err := api.DbSqlx.Begin()
+	if err != nil { pnh(response, API_UNKNOWN_ERROR, err); return; }
 	for index, table := range truncate_tables {
-		_, err := api.Db.Exec("TRUNCATE TABLE " + table)
+		_, err := tr.Exec("DELETE FROM " + table)
 		if (err != nil) { hasError = true }
 		errs[index] = err
 	}
+	tr.Commit()
 	if hasError {
+		log.Print("[ !!! ] Error: during clear there was an error!")
 		msg := "Errors: "
 		for _, err := range errs {
 			if err != nil { msg+=" "+ err.Error() +", \n" 	}
@@ -59,5 +65,5 @@ func (api *RestApi) registerCommonApi() {
 	ws.Route(ws.GET("/status").To(api.commonGetStatus))
 	ws.Route(ws.POST("/clear").To(api.commonPostClear))
 
-	api.Container	.Add(ws)
+	api.Container.Add(ws)
 }

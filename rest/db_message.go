@@ -1,17 +1,19 @@
 package rest
 
 import (
-	"gopkg.in/gorp.v1"
 	"database/sql"
+	"github.com/jmoiron/sqlx"
+	"log"
+	"errors"
 )
 
 type Message struct {
-	Id int				`json:"id" db:"id"`
+	Id int64			`json:"id" db:"id"`
 	Date string			`json:"date" db:"date"`
 	Message string			`json:"message" db:"message"`
-	IsDeleted bool			`json:"isDeleted" db:"state_is_deleted"`
+	IsDeleted bool			`json:"isDeleted" db:"status_is_deleted"`
 	User interface{}		`json:"user" db:"user"`
-	Forum interface{}		`json:"forum" db:"forum_id"`
+	Forum interface{}		`json:"forum" db:"forum"`
 
 	Likes		int	`json:"likes"`
 	Dislikes	int	`json:"dislikes"`
@@ -20,46 +22,57 @@ type Message struct {
 }
 
 type Rate struct {
-	Message int	`json:"message" db:"message_id"`
-	User	string	`json:"user" db:"user"`
+	Message int64	`json:"message" db:"message_id"`
 	IsLike	bool	`json:"isLike" db:"status_is_rate_like"`
 }
 
-func (m *Message) InsertIntoDb(db *gorp.DbMap) (sql.Result, error) {
+func (m *Message) InsertIntoDb(db *sqlx.DB) (sql.Result, error) {
+	log.Printf("[ L ] Inserting to Message table entry:\r\n %+v", m)
+	if m == nil {
+		return nil, errors.New("Error: Message struct is nil")
+	}
 	return db.Exec(
-		"INSERT INTO Message (forum_id, user, date, state_is_deleted, message) VALUES ( ?, ?, ?, ?, ?)",
-			m.Forum, m.User, m.Date, m.IsDeleted, m.Message);
+		"INSERT INTO Message (forum, user, date, status_is_deleted, message) VALUES ( ? , ? , ? , ? , ? )",
+			m.Forum.(string), m.User.(string), m.Date, m.IsDeleted, m.Message);
 }
 
-func MessageSetDeletedById(id int, db *gorp.DbMap, deleted bool ) (error) {
-	_, err := db.Exec("UPDATE Message SET status_is_deleted = ? WHERE id = ?", id, deleted)
+func MessageSetDeletedById(id int64, db *sqlx.DB, deleted bool ) (error) {
+	_, err := db.Exec("UPDATE Message SET status_is_deleted = ? WHERE id = ?",  deleted, id)
 	return err
 }
 
 
-func getMessageRatesById( id int, db *gorp.DbMap, include_users bool  ) ([]Rate, error ) {
+func getMessageRatesById( id int64, db *sqlx.DB  ) ([]Rate, error ) {
 	var rates []Rate;
-	selecting := "status_is_rate_like"
-	if include_users == true { selecting += ", user" }
-	_, err := db.Select(&rates, "SELECT "+selecting+" FROM UserMessageRate WHERE message_id = ?", id)
+	err := db.Select(&rates, "SELECT status_is_rate_like FROM UserMessageRate WHERE message_id = ?", id)
 	return rates, err
 }
 
-func getMessageById( id int ,  db *gorp.DbMap) (*Message, error) {
-	msg  := new(Message)
-	err := db.SelectOne(msg, "SELECT * FROM Message WHERE id = ?", id)
-	// get likes
-	rates, _ := getMessageRatesById(id, db, false)
+func getMessagePointsById( id int64, m *Message , db *sqlx.DB) {
+	rates, _ := getMessageRatesById(id, db)
 	for _, rate := range rates {
-		if rate.IsLike { msg.Likes += 1 } else { msg.Dislikes += 1}
+		if rate.IsLike { m.Likes += 1 } else { m.Dislikes += 1}
 	}
-	msg.Points = msg.Likes - msg.Dislikes
+	m.Points = m.Likes - m.Dislikes
+}
+
+func getMessageById( id int64 ,  db *sqlx.DB) (*Message, error) {
+	msg  := new(Message)
+	err := db.Get(msg, "SELECT * FROM Message WHERE id = ?", id)
+	if msg.Forum != nil { 	msg.Forum = string(msg.Forum.([]uint8)) }
+	if msg.User != nil { msg.User = string(msg.User.([]uint8)) }
+	// get likes
+	getMessagePointsById(id, msg, db)
 	return msg, err
 }
 
-func voteOnMessageById( id int, user string, is_like bool, db *gorp.DbMap) (error) {
-	_, err := db.Exec("INSERT INTO UserMssageRate (user, message_id, status_is_rate_like) VALUES(?, ?, ?) "+
-	"ON DUPLICATE KEY UPDATE status_is_rate_like = ?", user, id, is_like, is_like)
+func (m * Message) getPoints(db *sqlx.DB) {
+	getMessagePointsById(m.Id, m, db)
+
+}
+
+func voteOnMessageById( id int64, is_like bool, db *sqlx.DB) (error) {
+	_, err := db.Exec("INSERT INTO UserMessageRate (message_id, status_is_rate_like) VALUES(?, ?) ", id, is_like)
 	return err
 }
 
