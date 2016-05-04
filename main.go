@@ -47,12 +47,24 @@ func (u UserResource) nop(request *restful.Request, response *restful.Response) 
 
 
 func main() {
-	log.Printf("[*] Loading router...")
+	log.Printf("[ * ] Checking database connection...")
+	conn, err := rest.CreateConnector()
+	db_err_string := "[ ERROR ] Could not connect to the database.\nError:%s"
+	if (err != nil) {
+		log.Panic(db_err_string, err)
+	} else {
+		err = conn.Ping()
+		if (err != nil) {
+			log.Panic(db_err_string, err)
+		}
+	}
+
+	log.Printf("[ * ] Loading router...")
 
 
 	restApi := rest.CreateRestApi()
 
-	log.Printf("[*] Beggining to listen on localhost:8080")
+	log.Printf("[ * ] Beggining to listen on localhost:8080")
 	server := &http.Server{Addr: ":8080", Handler: restApi.Container }
 	log.Fatal(server.ListenAndServe())
 }

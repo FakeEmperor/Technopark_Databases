@@ -14,7 +14,7 @@ import (
 
 
 func CreateConnector() (*sql.DB, error) {
-	db_connector, err:= sql.Open("mysql", "tpdb_admin:Lalka123@tcp(95.213.235.64:3306)/tpdb")
+	db_connector, err:= sql.Open("mysql", "tpdb_admin:Lalka123@tcp(127.0.0.1:3306)/tpdb")
 	return db_connector, err;
 }
 
