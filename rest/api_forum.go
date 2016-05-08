@@ -85,13 +85,17 @@ func (api *RestApi) forumGetListPosts(request *restful.Request, response *restfu
 	related, err :=
 	execListQuery(
 		ExecListParams{
-			request: request, resultContainer: &posts, db: api.DbSqlx,
-			selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "forum",
-			selectWhereWhat: request.QueryParameter("forum"), selectWhereIsInnerSelect: false,
-			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-			joinEnabled: true, joinTables: []string{ "Message" } ,
-			joinConditions: []string{ "id" }, joinByUsingStatement: true,
-			limitEnabled: true } );
+			BuildListParams: BuildListParams {
+				request: request,  db: api.DbSqlx,
+				selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "forum",
+				selectWhereWhat: request.QueryParameter("forum"), selectWhereIsInnerSelect: false,
+				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
+				joinEnabled: true, joinTables: []string{"Message" },
+				joinConditions: []string{"id" }, joinByUsingStatement: true,
+				limitEnabled: true,
+			},
+			resultContainer: &posts,
+		});
 	if err != nil {
 		response.WriteEntity(createResponse(API_QUERY_INVALID, err.Error()))
 		return
@@ -127,13 +131,16 @@ func (api *RestApi) forumGetListThreads(request *restful.Request, response *rest
 	var threads []Thread
 	related, err := execListQuery(
 		ExecListParams{
-			request: request, resultContainer: &threads, db: api.DbSqlx,
-			selectWhat: "*", selectFromWhat: "Message", selectWhereColumn: "forum",
-			selectWhereWhat: request.QueryParameter("forum"), selectWhereIsInnerSelect: false,
-			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-			joinEnabled: true, joinTables: []string{ "Thread" },
-			joinConditions: []string{ "id" }, joinByUsingStatement: true,
-			limitEnabled: true })
+			BuildListParams: BuildListParams {
+				request: request,  db: api.DbSqlx,
+				selectWhat: "*", selectFromWhat: "Message", selectWhereColumn: "forum",
+				selectWhereWhat: request.QueryParameter("forum"), selectWhereIsInnerSelect: false,
+				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
+				joinEnabled: true, joinTables: []string{"Thread" },
+				joinConditions: []string{"id" }, joinByUsingStatement: true,
+				limitEnabled: true },
+			resultContainer: &threads,
+		})
 
 	if err != nil { pnh(response, API_UNKNOWN_ERROR, err); return; }
 	relatedUser, relatedForum := false, false
@@ -162,21 +169,57 @@ func (api *RestApi) forumGetListThreads(request *restful.Request, response *rest
 }
 
 func (api *RestApi) forumGetListUsers(request *restful.Request, response *restful.Response) {
-	var emails []string;
-	_, err := execListQuery(
+	var users []FilledUser;
+	/*_, err := execListQuery(
 		ExecListParams{
-			request: request, resultContainer: &emails, db: api.DbSqlx,
-			selectWhat: "email", selectFromWhat: "User", selectWhereColumn: "email",
-			selectWhereWhat: "(SELECT DISTINCT user FROM Message WHERE forum = \"" + request.QueryParameter("forum") + "\")",
-			selectWhereIsInnerSelect: true,
-			sinceParamName: "since_id", sinceByWhat: "id", orderByWhat: "name",
-			joinEnabled: false, joinTables: nil, joinConditions: nil, joinByUsingStatement: true,
+			request: request, resultContainer: &users, db: api.DbSqlx,
+			selectWhat: "User.*", selectFromWhat: "User", selectWhereColumn: "forum",
+			selectWhereWhat: request.QueryParameter("forum"),
+			selectWhereIsInnerSelect: false,
+			sinceParamName: "since_id", sinceByWhat: "post_merged.id", orderByWhat: "name",
+			joinEnabled: true, joinTables: []string{"post_merged"}, joinConditions: []string{"User.email = post_merged.user"},
+			joinByUsingStatement: false,
 			limitEnabled: true } )
+	*/ // OLD
+	inner_str, inner_vars, _, err := buildListQuery(
+		BuildListParams{
+			request: request, db: api.DbSqlx,
+			selectWhat: "user as 'email'", selectFromWhat: POST_TABLE,
+			selectWhereColumn: "forum",
+			selectWhereWhat: request.QueryParameter("forum"),
+			orderByWhat: "link_user_name",
+			limitEnabled: true,
+			joinEnabled: false,
+		},
+	);
+	if err != nil { pnh(response, 5, err); }
+
+	_, err = execListQuery(
+		ExecListParams{
+			BuildListParams: BuildListParams{
+				request: request, db: api.DbSqlx,
+				selectWhat: "User.*", selectFromWhat: "User",
+				selectWhereColumn: "", selectWhereWhat: "",
+				selectWhereIsInnerSelect: false,
+				joinEnabled: true, joinTables: []string{
+					"(" + inner_str + ") as Emails",
+				},
+				joinConditions: []string{"email"},
+				joinByUsingStatement: true,
+				joinPlaceholderParams: [][]interface{}{inner_vars},
+				limitEnabled: false,
+			},
+			resultContainer: &users,
+		})
+
 	if err != nil { pnh(response, API_QUERY_INVALID, err); return }
-	users := make([]FilledUser, len(emails))
-	for index, email := range emails {
-		tmp, _ := userByEmail(email, api.DbSqlx);
-		users[index] = *tmp
+
+
+	for index, _ := range users {
+		users[index].GetFollowersSubscriptions(api.DbSqlx)
+	}
+	if len(users) == 0 {
+		users = []FilledUser{}
 	}
 	response.WriteEntity(createResponse(0, users))
 }
