@@ -44,6 +44,17 @@ func (api *RestApi) registerUserApi() {
 	api.Container	.Add(ws)
 }
 
+func (fuser *FilledUser) GetFollowersSubscriptions(db *sqlx.DB) (error) {
+	err := db.Select(&fuser.Followers, "SELECT follower FROM UserFollowers WHERE followee = ?", fuser.Email)
+	err = db.Select(&fuser.Following, "SELECT followee FROM UserFollowers WHERE follower = ?", fuser.Email)
+	err = db.Select(&fuser.Subscriptions, "SELECT thread_id FROM usersubscription WHERE user = ?", fuser.Email)
+	if fuser.Followers == nil { fuser.Followers = []string{} }
+	if fuser.Following == nil { fuser.Following = []string{} }
+	if fuser.Subscriptions == nil { fuser.Subscriptions = []int64{} }
+	return err;
+}
+
+
 
 func userByEmail(email string, db *sqlx.DB) (*FilledUser, error) {
 	var user *User = new(User);
@@ -53,12 +64,7 @@ func userByEmail(email string, db *sqlx.DB) (*FilledUser, error) {
 		return nil, err
 	}
 	fuser.User = user;
-	err = db.Select(&fuser.Followers, "SELECT follower FROM UserFollowers WHERE followee = ?", email)
-	err = db.Select(&fuser.Following, "SELECT followee FROM UserFollowers WHERE follower = ?", email)
-	err = db.Select(&fuser.Subscriptions, "SELECT thread_id FROM usersubscription WHERE user = ?", email)
-	if fuser.Followers == nil { fuser.Followers = []string{} }
-	if fuser.Following == nil { fuser.Following = []string{} }
-	if fuser.Subscriptions == nil { fuser.Subscriptions = []int64{} }
+	err = fuser.GetFollowersSubscriptions(db);
 	return fuser, err
 }
 
@@ -188,13 +194,16 @@ func (api *RestApi) userGetListPosts(request *restful.Request, response *restful
 	var posts []Post
 	_, err := execListQuery(
 		ExecListParams{
-			request: request, resultContainer: &posts, db: api.DbSqlx,
-			selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "user",
-			selectWhereWhat: request.QueryParameter("user"), selectWhereIsInnerSelect: false,
-			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-			joinEnabled: true, joinTables: []string{"Message"},
-			joinConditions: []string{"id"}, joinByUsingStatement: true,
-			limitEnabled: true,
+			BuildListParams: BuildListParams{
+				request: request,  db: api.DbSqlx,
+				selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "user",
+				selectWhereWhat: request.QueryParameter("user"), selectWhereIsInnerSelect: false,
+				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
+				joinEnabled: true, joinTables: []string{"Message"},
+				joinConditions: []string{"id"}, joinByUsingStatement: true,
+				limitEnabled: true,
+			},
+			resultContainer: &posts,
 		})
 	if err != nil {
 		response.WriteEntity(createResponse(API_QUERY_INVALID,err.Error()))

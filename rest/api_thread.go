@@ -2,7 +2,6 @@ package rest
 
 import (
 	"github.com/emicklei/go-restful"
-	"database/sql"
 	"github.com/jmoiron/sqlx"
 	"log"
 	"strings"
@@ -15,10 +14,25 @@ type Thread struct {
 	IsClosed  bool		`db:"status_is_closed" json:"isClosed"`
 	Title     string	`db:"title" json:"title"`
 
-	Posts     int64		`json:"posts"`
+	Posts     int64		`db:"calc_post_count" json:"posts"`
 
 	*Message
 }
+
+
+// ---- static functions for Thread
+func threadById(id int64, db *sqlx.DB) (*Thread, error) {
+	thread := new(Thread)
+	err := db.Unsafe().Get(thread, "SELECT * FROM "+THREAD_TABLE+" WHERE id = ?", id)
+	// TODO: Get points
+	if err == nil {
+		backToUTF(&thread.Forum, &thread.User)
+	}
+	return thread, err
+}
+
+
+// -------- ^^ END: THREAD ^^ -------
 
 func (api *RestApi) registerThreadApi() {
 	ws := new(restful.WebService)
@@ -45,20 +59,8 @@ func (api *RestApi) registerThreadApi() {
 	api.Container	.Add(ws)
 }
 
-func (t *Thread) getPostsCount(db *sqlx.DB) (error) {
-	log.Printf("[ L ] Getting Thread (%d) post count...", t.Id)
-	return db.Get( &t.Posts, "SELECT COUNT(Post.id) FROM Post JOIN Message ON Post.id = Message.id AND "+
-	"Message.status_is_deleted = 0 WHERE thread_id = ? ", t.Id )
-}
 
-func threadById(id int64, db *sqlx.DB) (*Thread, error) {
-	thread := new(Thread)
-	err := db.Get(thread, "SELECT * FROM Thread WHERE id = ?", id)
-	msg, err := getMessageById(id, db)
-	thread.Message = msg;
-	if err == nil { err = thread.getPostsCount(db); }
-	return thread, err
-}
+
 
 func (api *RestApi) threadPostCreate(request *restful.Request, response *restful.Response) {
 	var thread Thread
@@ -103,24 +105,25 @@ func (api *RestApi) threadGetList(request *restful.Request, response *restful.Re
 	var threads []Thread
 	_, err := execListQuery(
 		ExecListParams{
-			request: request, resultContainer: &threads, db: api.DbSqlx,
-			selectWhat: "*", selectFromWhat: "Thread", selectWhereColumn: queryColumn,
-			selectWhereWhat: queryParameter, selectWhereIsInnerSelect: false,
-			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-			joinEnabled: true, joinTables: []string{"Message"},
-			joinConditions: []string{"id"}, joinByUsingStatement: true,
-			limitEnabled: true,
+			BuildListParams: BuildListParams{
+				request: request,db: api.DbSqlx,
+				selectWhat: "*", selectFromWhat: "Thread", selectWhereColumn: queryColumn,
+				selectWhereWhat: queryParameter, selectWhereIsInnerSelect: false,
+				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
+				joinEnabled: true, joinTables: []string{"Message"},
+				joinConditions: []string{"id"}, joinByUsingStatement: true,
+				limitEnabled: true,
+			},
+			resultContainer: &threads,
 		})
 	if err != nil {
 		pnh(response, API_QUERY_INVALID, err); return;
 	} else {
-		if threads == nil { threads = []Thread{} } else {
+		if threads == nil {
+			threads = []Thread{}
+		} else {
 			for i, _ := range threads {
 				backToUTF(&threads[i].Forum, &threads[i].User)
-				err = threads[i].getPostsCount(api.DbSqlx);
-				if err != nil {
-					pnh(response, API_UNKNOWN_ERROR, err); return;
-				}
 			}
 		}
 		response.WriteEntity(createResponse(API_STATUS_OK, threads))
@@ -242,13 +245,16 @@ func (api *RestApi) threadGetListPosts(request *restful.Request, response *restf
 	log.Printf("[ L ] Listing Posts... [sorting=%s]", sort)
 	var err error;
 	BaseParams := ExecListParams {
-		request: request, resultContainer: &posts, db: api.DbSqlx,
-		selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "thread_id",
-		selectWhereWhat: request.QueryParameter("thread"),
-		sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-		joinEnabled: true, joinTables: []string{"Message"},
-		joinConditions: []string{"id"}, joinByUsingStatement: true,
-		limitEnabled: true,
+		BuildListParams: BuildListParams{
+			request: request, db: api.DbSqlx,
+			selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "thread_id",
+			selectWhereWhat: request.QueryParameter("thread"),
+			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
+			joinEnabled: true, joinTables: []string{"Message"},
+			joinConditions: []string{"id"}, joinByUsingStatement: true,
+			limitEnabled: true,
+		},
+		resultContainer: &posts,
 	}
 	if sort == "flat" || sort == "" {
 		err = api.threadGetListPosts_Flat(BaseParams)
@@ -277,17 +283,19 @@ func (api *RestApi) threadGetListPosts(request *restful.Request, response *restf
 	}
 }
 
-func threadSetDeletedById(id int64, deleted bool, db *sqlx.DB) (sql.Result, error) {
-	return db.Exec("UPDATE Message SET status_is_deleted = ? WHERE id = ? " +
-			"OR id IN (SELECT id FROM Post WHERE thread_id = ?)", deleted, id, id)
+func threadSetDeletedById(id int64, deleted bool, db *sqlx.DB) (error) {
+	_, err := db.Query("CALL thread_delete_restore(?,?)", id, deleted);
+
+	return err;
 }
+
 
 func threadSetDeleted(request *restful.Request, response *restful.Response, db *sqlx.DB, deleted bool) {
 	var params struct {
 		Thread int64 `json:"thread"`
 	}
 	request.ReadEntity(&params)
-	_, err := threadSetDeletedById(params.Thread, deleted, db)
+	err := threadSetDeletedById(params.Thread, deleted, db)
 	if err != nil {
 		pnh(response, API_QUERY_INVALID, err)
 	} else { response.WriteEntity(createResponse(API_STATUS_OK, params)) }
@@ -364,6 +372,7 @@ func (api *RestApi) threadPostClose(request *restful.Request, response *restful.
 	response.WriteEntity(createResponse(API_STATUS_OK, params))
 }
 
+// TODO: Change it
 func (api *RestApi) threadPostVote(request *restful.Request, response *restful.Response) {
 	var params struct {
 		User	string	`json:"user"`

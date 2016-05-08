@@ -44,15 +44,25 @@ func (api *RestApi) commonPostClear(request *restful.Request, response *restful.
 func (api *RestApi) commonGetStatus(request *restful.Request, response *restful.Response) {
 	status:= Status{}
 	var err error
-	err = api.Db.QueryRow("SELECT count(id) FROM user").Scan(&status.Users)
-	err = api.Db.QueryRow("SELECT count(id) FROM thread").Scan(&status.Threads)
-	err = api.Db.QueryRow("SELECT count(id) FROM forum").Scan(&status.Forums)
-	err = api.Db.QueryRow("SELECT count(id) FROM post").Scan(&status.Posts)
-	if err != nil {
-		response.WriteEntity(*createResponse(API_QUERY_INVALID, err.Error()))
-	} else {
-		response.WriteEntity(*createResponse(API_STATUS_OK, status))
+	tables := map[string]*int{
+		USER_TABLE : &status.Users,
+		FORUM_TABLE : &status.Forums,
+		POST_TABLE : &status.Posts,
+		THREAD_TABLE : &status.Threads,
 	}
+	for name, result_addr := range tables {
+		if DIRTY_USE_ESTIMATION {
+			err = api.Db.QueryRow("SELECT TABLE_ROWS FROM information_schema.TABLES WHERE table_name = ?", name).Scan(result_addr)
+		} else {
+			err = api.Db.QueryRow("SELECT COUNT(*) FROM " + name).Scan(result_addr)
+		}
+		if err != nil {
+			pnh(response, API_UNKNOWN_ERROR, err)
+			return;
+		}
+	}
+	response.WriteEntity(*createResponse(API_STATUS_OK, status))
+
 }
 
 

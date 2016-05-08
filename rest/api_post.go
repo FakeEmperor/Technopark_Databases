@@ -155,13 +155,17 @@ func (api *RestApi) postGetList(request *restful.Request, response *restful.Resp
 	var posts []Post;
 	_, err := execListQuery(
 		ExecListParams{
-			request: request, resultContainer: &posts, db: api.DbSqlx,
-			selectWhat: "*", selectFromWhat: "Message", selectWhereColumn: queryColumn,
-			selectWhereWhat: queryParameter, selectWhereIsInnerSelect: false,
-			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-			joinEnabled: true, joinTables: []string{"Post"},
-			joinConditions: []string{"id"}, joinByUsingStatement: true,
-			limitEnabled: true} )
+			BuildListParams: BuildListParams {
+				request: request, db: api.DbSqlx,
+				selectWhat: "*", selectFromWhat: "Message", selectWhereColumn: queryColumn,
+				selectWhereWhat: queryParameter, selectWhereIsInnerSelect: false,
+				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
+				joinEnabled: true, joinTables: []string{"Post"},
+				joinConditions: []string{"id"}, joinByUsingStatement: true,
+				limitEnabled: true,
+			},
+			resultContainer: &posts,
+		})
 
 	if err != nil {
 		pnh(response, API_UNKNOWN_ERROR, err)
@@ -182,7 +186,7 @@ func (api *RestApi) postSetDeleted(request *restful.Request, response *restful.R
 		Post int64 `json:"post"`
 	}
 	request.ReadEntity(&params)
-	err := MessageSetDeletedById(params.Post, api.DbSqlx, deleted)
+	_, err := api.DbSqlx.Exec("CALL post_delete_restore(?,?)", params.Post, deleted)
 	if err != nil { pnh(response, API_UNKNOWN_ERROR, err) } else {
 		response.WriteEntity(createResponse(API_STATUS_OK, params))
 	}
