@@ -12,6 +12,14 @@ import (
 	"strconv"
 )
 
+var POST_TABLE = "post_merged";
+var USER_TABLE = "User";
+var THREAD_TABLE = "thread_merged";
+var FORUM_TABLE = "Forum";
+var SUBS_TABLE = "UserSubscriptions";
+var FOLWS_TABLE = "UserFollowers";
+
+var DIRTY_USE_ESTIMATION = false;
 
 func CreateConnector() (*sql.DB, error) {
 	db_connector, err:= sql.Open("mysql", "tpdb_admin:Lalka123@tcp(127.0.0.1:3306)/tpdb")
@@ -20,15 +28,17 @@ func CreateConnector() (*sql.DB, error) {
 
 func backToUTF( uint_ptrs ... *interface{} ) {
 	for _, ptr := range uint_ptrs {
-		str_val := string((*ptr).([]uint8))
-		*ptr = str_val
+		if ptr != nil {
+			str_val := string((*ptr).([]uint8))
+			*ptr = str_val
+		}
+
 	}
 }
 
 
-type ExecListParams struct {
+type BuildListParams struct {
 	request                  *restful.Request
-	resultContainer          interface{}
 	db                       *sqlx.DB
 
 	selectWhat               string
@@ -49,35 +59,74 @@ type ExecListParams struct {
 	joinTables               []string
 	joinConditions           []string
 	joinByUsingStatement     bool
+	joinPlaceholderParams	 [][]interface{}
 
 	limitEnabled             bool
 	limitOverrideEnabled     bool
 	limitOverrideValue       int64
 
+
+}
+
+type ExecListParams struct {
+	BuildListParams
+
+	resultContainer          interface{}
 	operationIsTransaction   bool
 	operationTransaction     *sqlx.Tx
+
+
+
 }
 
 
-func execListQuery( param ExecListParams ) ([]string, error) {
+func GetOrderFromQuery( request *restful.Request) (string) {
+	//order
+	order_str := strings.ToUpper(request.QueryParameter("order"))
+	if order_str  == "" { order_str = ORDER_DESC }
+	return order_str;
+}
+
+func buildListQuery(param BuildListParams) (string, []interface{}, []string, error) {
 	related := param.request.Request.URL.Query()["related"]
-	var op string = "= ?";
-	if param.selectWhereCustomOp != "" {
-		op = param.selectWhereCustomOp + " ?";
-	}
-	if param.selectWhereIsInnerSelect { op = "IN ( " + param.selectWhereWhat + ")" }
+	query_variables := []interface{}{ }
+
+	// MOST BASIC OPERATION - FROM
 	from_str := param.selectFromWhat
+	// CASE FOR JOIN
 	if param.joinEnabled {
+		jpp_len := len(param.joinPlaceholderParams)
 		for index, joinTable := range param.joinTables {
 			from_str += " JOIN "+ joinTable + " "
 			if param.joinByUsingStatement { from_str += "USING("+param.joinConditions[index] + ") " } else {
 				from_str += "ON "+param.joinConditions[index] + " "
 			}
+
+			if param.joinPlaceholderParams != nil && jpp_len > index && len(param.joinPlaceholderParams[index]) > 0 {
+				query_variables = append(query_variables, param.joinPlaceholderParams[index]...)
+			}
 		}
 	}
-	query_str := " SELECT "+param.selectWhat+" FROM "+from_str+" WHERE " + param.selectWhereColumn + " "+ op
-	since_str := param.request.QueryParameter(param.sinceParamName)
-
+	// BASE SELECTION SKELETON
+	query_str := " SELECT "+param.selectWhat+" FROM "+from_str;
+	// IF WHERE IS ACTIVE
+	if param.selectWhereColumn != "" && param.selectWhereWhat != "" {
+		var op string;
+		// CASE FOR INNER SELECT
+		if param.selectWhereIsInnerSelect {
+			op = "IN ( " + param.selectWhereWhat + ")"
+		} else {
+			// CASE FOR STRAIGHT WHERE
+			if param.selectWhereCustomOp != "" {
+				op = param.selectWhereCustomOp + " ?";
+			} else {
+				op = "= ?"
+			}
+			query_variables = append(query_variables, param.selectWhereWhat)
+		}
+		query_str += " WHERE " + param.selectWhereColumn + " "+ op
+	}
+	// CASE FOR LIMIT
 	limit_str := ""
 	if param.limitEnabled {
 		if param.limitOverrideEnabled {
@@ -85,20 +134,14 @@ func execListQuery( param ExecListParams ) ([]string, error) {
 		} else { limit_str = param.request.QueryParameter("limit"); }
 	}
 
-
 	//order
-	order_str := ""
-	if param.orderOverrideOrder == "" { order_str = strings.ToUpper(param.request.QueryParameter("order")) } else {
-		order_str = strings.ToUpper(param.orderOverrideOrder)
-	}
-	if order_str  == "" { order_str = ORDER_DESC }
+	var order_str string;
+	if param.orderOverrideOrder != "" {
+		order_str = param.orderOverrideOrder;
+	} else { order_str = GetOrderFromQuery(param.request); }
 
-	query_variables := []interface{}{ }
-
-	// CASE FOR INNER SELECT
-	if !param.selectWhereIsInnerSelect { query_variables = append(query_variables, param.selectWhereWhat) }
-
-	// SINCE PARAM (ADDITIONAL CONDITION ON WHERE)
+	// CASE FOR SINCE PARAM (ADDITIONAL CONDITION ON WHERE)
+	since_str := param.request.QueryParameter(param.sinceParamName)
 	if since_str != "" && param.sinceByWhat != "" {
 		query_str += " AND "+param.sinceByWhat+" >= ?"
 		query_variables = append(query_variables, since_str)
@@ -107,19 +150,29 @@ func execListQuery( param ExecListParams ) ([]string, error) {
 	//ORDERING
 	if param.orderByWhat != "" {
 		if order_str != ORDER_ASC && order_str != ORDER_DESC {
-			return related, errors.New("Order field from query ('"+order_str+"') is not valid")
+			return "", []interface{}{}, related, errors.New("Order field from query ('"+order_str+"') is not valid")
 		} else { query_str += " ORDER BY " + param.orderByWhat + " " + order_str }
 	}
 
 	//LIMITING
 	if param.limitEnabled && limit_str != "" {
+		// if not bake - then only prepare with placeholders
 		query_str += " LIMIT ? "
 		query_variables = append(query_variables, limit_str)
 	}
 
 
 	log.Printf("[ ! ] [execListQuery] Query is: %s\nWith params: %+v", query_str, query_variables)
-	var err error;
+
+	return query_str, query_variables, related, nil;
+}
+
+func execListQuery( param ExecListParams ) ([]string, error) {
+	query_str, query_variables , related, err := buildListQuery(param.BuildListParams);
+	if err != nil {
+		return related, err;
+	}
+
 	if !param.operationIsTransaction {
 		err = param.db.Select(param.resultContainer, query_str, query_variables...)
 
