@@ -7,6 +7,7 @@ import (
 	"./rest"
 	"github.com/emicklei/go-restful"
 	"io/ioutil"
+	"os"
 )
 
 // Cross-origin resource sharing (CORS) is a mechanism that allows JavaScript on a web page
@@ -46,8 +47,19 @@ func (u UserResource) nop(request *restful.Request, response *restful.Response) 
 	io.WriteString(response.ResponseWriter, "this would be a normal response")
 }
 
+var LOG_PATH = "/var/log/tpdb.log";
+var LOG_ENABLED = true;
 
 func main() {
+	if LOG_ENABLED {
+		f, err := os.OpenFile(LOG_PATH, os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
+		if err != nil {
+			log.Printf("[ ERROR ] Couldn't open log file: %s\nERROR: %s", LOG_PATH, err.Error())
+		} else {
+			log.SetOutput(f)
+		}
+		defer f.Close()
+	}
 	log.Printf("[ * ] Checking database connection...")
 	conn, err := rest.CreateConnector()
 	db_err_string := "[ ERROR ] Could not connect to the database.\nError:%s"
@@ -61,13 +73,14 @@ func main() {
 	}
 
 	log.Printf("[ * ] Loading router...")
-
-
 	restApi := rest.CreateRestApi()
-
 	log.Printf("[ * ] Beggining to listen on localhost:8080")
-	log.SetFlags(0);
-	log.SetOutput(ioutil.Discard)
+
+	if !LOG_ENABLED {
+		log.SetFlags(0);
+		log.SetOutput(ioutil.Discard)
+	}
+
 	server := &http.Server{Addr: ":8080", Handler: restApi.Container }
 	log.Fatal(server.ListenAndServe())
 }
