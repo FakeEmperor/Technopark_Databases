@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"./rest"
 	"github.com/emicklei/go-restful"
+	"io/ioutil"
 )
 
 // Cross-origin resource sharing (CORS) is a mechanism that allows JavaScript on a web page
@@ -65,6 +66,8 @@ func main() {
 	restApi := rest.CreateRestApi()
 
 	log.Printf("[ * ] Beggining to listen on localhost:8080")
+	log.SetFlags(0);
+	log.SetOutput(ioutil.Discard)
 	server := &http.Server{Addr: ":8080", Handler: restApi.Container }
 	log.Fatal(server.ListenAndServe())
 }
