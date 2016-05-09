@@ -1,10 +1,7 @@
 package rest
 
 import (
-	"database/sql"
-	"github.com/jmoiron/sqlx"
-	"log"
-	"errors"
+
 )
 
 type Message struct {
@@ -15,12 +12,12 @@ type Message struct {
 	User interface{}		`json:"user" db:"user"`
 	Forum interface{}		`json:"forum" db:"forum"`
 
-	Likes		int	`json:"likes"`
-	Dislikes	int	`json:"dislikes"`
-	Points		int	`json:"points"`
+	Likes		int	`json:"likes" db:"calc_rate_positive"`
+	Dislikes	int	`json:"dislikes" db:"calc_rate_negative"`
+	Points		int	`json:"points" db:"calc_rate_points"`
 
 }
-
+/*
 type Rate struct {
 	Message int64	`json:"message" db:"message_id"`
 	IsLike	bool	`json:"isLike" db:"status_is_rate_like"`
@@ -76,3 +73,5 @@ func voteOnMessageById( id int64, is_like bool, db *sqlx.DB) (error) {
 	return err
 }
 
+
+ */

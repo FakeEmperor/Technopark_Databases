@@ -87,11 +87,10 @@ func (api *RestApi) forumGetListPosts(request *restful.Request, response *restfu
 		ExecListParams{
 			BuildListParams: BuildListParams {
 				request: request,  db: api.DbSqlx,
-				selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "forum",
+				selectWhat: "*", selectFromWhat: POST_TABLE, selectWhereColumn: "forum",
 				selectWhereWhat: request.QueryParameter("forum"), selectWhereIsInnerSelect: false,
 				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-				joinEnabled: true, joinTables: []string{"Message" },
-				joinConditions: []string{"id" }, joinByUsingStatement: true,
+				joinEnabled: false,
 				limitEnabled: true,
 			},
 			resultContainer: &posts,
@@ -112,7 +111,6 @@ func (api *RestApi) forumGetListPosts(request *restful.Request, response *restfu
 	}
 	for index, post := range posts {
 		backToUTF(&post.User, &post.Forum)
-		post.getPoints(api.DbSqlx)
 		if relatedUser {
 			posts[index].User, _ = userByEmail(post.User.(string), api.DbSqlx)
 		}
@@ -133,11 +131,10 @@ func (api *RestApi) forumGetListThreads(request *restful.Request, response *rest
 		ExecListParams{
 			BuildListParams: BuildListParams {
 				request: request,  db: api.DbSqlx,
-				selectWhat: "*", selectFromWhat: "Message", selectWhereColumn: "forum",
+				selectWhat: "*", selectFromWhat: THREAD_TABLE, selectWhereColumn: "forum",
 				selectWhereWhat: request.QueryParameter("forum"), selectWhereIsInnerSelect: false,
 				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-				joinEnabled: true, joinTables: []string{"Thread" },
-				joinConditions: []string{"id" }, joinByUsingStatement: true,
+				joinEnabled: false,
 				limitEnabled: true },
 			resultContainer: &threads,
 		})
@@ -153,10 +150,6 @@ func (api *RestApi) forumGetListThreads(request *restful.Request, response *rest
 	}
 	for index, thread := range threads {
 		backToUTF(&thread.User, &thread.Forum)
-		thread.getPoints(api.DbSqlx)
-		api.DbSqlx.Get(&threads[index].Posts, "SELECT COUNT(Post.id) FROM Message JOIN "+
-						" Post ON Post.id = Message.id AND Message.status_is_deleted = 0 "+
-						" WHERE Post.thread_id = ?", thread.Id)
 		if relatedUser {
 			threads[index].User, _ = userByEmail(thread.User.(string), api.DbSqlx)
 		}

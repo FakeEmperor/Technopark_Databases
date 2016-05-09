@@ -12,14 +12,18 @@ import (
 	"strconv"
 )
 
-var POST_TABLE = "post_merged";
-var USER_TABLE = "User";
-var THREAD_TABLE = "thread_merged";
-var FORUM_TABLE = "Forum";
-var SUBS_TABLE = "UserSubscriptions";
-var FOLWS_TABLE = "UserFollowers";
+var (
 
-var DIRTY_USE_ESTIMATION = false;
+POST_TABLE = "post_merged";
+THREAD_TABLE = "thread_merged";
+USER_TABLE = "User";
+FORUM_TABLE = "Forum";
+SUBS_TABLE = "UserSubscriptions";
+FOLWS_TABLE = "UserFollowers";
+POST_RATES_TABLE = "post_rate";
+THREAD_RATES_TABLE = "thread_rate";
+DIRTY_USE_ESTIMATION = false;
+)
 
 func CreateConnector() (*sql.DB, error) {
 	db_connector, err:= sql.Open("mysql", "tpdb_admin:Lalka123@tcp(127.0.0.1:3306)/tpdb")

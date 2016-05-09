@@ -96,9 +96,7 @@ func (api *RestApi) registerPostApi() {
 
 func postById(id int64, db *sqlx.DB) (*Post, error) {
 	post := new(Post)
-	db.Get(post, "SELECT * FROM Post WHERE id = ?", id)
-	msg, err := getMessageById(id, db)
-	post.Message = msg;
+	err:= db.Get(post, "SELECT * FROM "+POST_TABLE+" WHERE id = ?", id)
 	return post, err
 }
 
@@ -106,17 +104,17 @@ func (api *RestApi) postPostCreate(request *restful.Request, response *restful.R
 	var post Post
 	request.ReadEntity(&post)
 	log.Printf("[ * ][ POST CREATE ] Got post info:\r\n %+v", post)
-	result, err := post.Message.InsertIntoDb(api.DbSqlx)
-	if err != nil {
-		pnh(response, API_UNKNOWN_ERROR, err); return
-	}
-	post.Id, _ = result.LastInsertId();
-	if post.Thread != nil { post.Thread, _ = post.Thread.(json.Number).Int64() }
 	// THIS IS TO MAKE NULLS ON PARENT FIELD IF PARENT ID <= 0
+	if post.Thread != nil { post.Thread, _ = post.Thread.(json.Number).Int64() }
 	/////////////////
-	result, err = api.DbSqlx.Exec("INSERT INTO Post (id, status_is_approved, status_is_edited, status_is_highlighted, status_is_spam, parent_id, thread_id )" +
-		" VALUES (?, ?, ?, ?, ?, ?, ?)", post.Id, post.IsApproved, post.IsEdited, post.IsHighlighted,
-			post.IsSpam, post.Parent, post.Thread)
+
+	_, err := api.DbSqlx.Exec(
+		"INSERT INTO Post (status_is_approved, status_is_edited, status_is_highlighted, status_is_spam, parent_id, thread_id, forum, user, date, status_is_deleted, message)" +
+		" VALUES (?, ?, ?, ?, ?, ?, ?, ? , ? , ? , ? , ?)",
+		post.Id, post.IsApproved, post.IsEdited, post.IsHighlighted,
+		post.IsSpam, post.Parent, post.Thread,
+		post.Forum.(string), post.User.(string), post.Date, post.IsDeleted, post.Message,
+	)
 	if err != nil { pnh(response, API_UNKNOWN_ERROR, err) } else {
 		response.WriteEntity(createResponse(API_STATUS_OK, post))
 	}
@@ -157,11 +155,10 @@ func (api *RestApi) postGetList(request *restful.Request, response *restful.Resp
 		ExecListParams{
 			BuildListParams: BuildListParams {
 				request: request, db: api.DbSqlx,
-				selectWhat: "*", selectFromWhat: "Message", selectWhereColumn: queryColumn,
+				selectWhat: "*", selectFromWhat: POST_TABLE, selectWhereColumn: queryColumn,
 				selectWhereWhat: queryParameter, selectWhereIsInnerSelect: false,
 				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-				joinEnabled: true, joinTables: []string{"Post"},
-				joinConditions: []string{"id"}, joinByUsingStatement: true,
+				joinEnabled: false,
 				limitEnabled: true,
 			},
 			resultContainer: &posts,
@@ -206,7 +203,7 @@ func (api *RestApi) postPostUpdate(request *restful.Request, response *restful.R
 		Message string `json:"message"`
 	}
 	request.ReadEntity(&params)
-	_ , err := api.DbSqlx.Exec("UPDATE Message SET message = ? WHERE id = ?", params.Message, params.Post)
+	_ , err := api.DbSqlx.Exec("UPDATE "+POST_TABLE+" SET message = ? WHERE id = ?", params.Message, params.Post)
 	if err != nil { pnh(response, API_UNKNOWN_ERROR, err) } else {
 		post, _ := postById(params.Post, api.DbSqlx)
 		response.WriteEntity(createResponse(API_STATUS_OK, post))
@@ -220,7 +217,7 @@ func (api *RestApi) postPostVote(request *restful.Request, response *restful.Res
 	}
 	request.ReadEntity(&params)
 	is_like := params.Vote != -1
-	err := voteOnMessageById(params.Post, is_like, api.DbSqlx)
+	_, err := api.DbSqlx.Query("CALL post_vote(?,?)", params.Post, is_like);
 	if err != nil {
 		pnh(response, API_UNKNOWN_ERROR, err)
 	} else {

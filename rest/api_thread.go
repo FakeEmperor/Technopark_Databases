@@ -23,7 +23,7 @@ type Thread struct {
 // ---- static functions for Thread
 func threadById(id int64, db *sqlx.DB) (*Thread, error) {
 	thread := new(Thread)
-	err := db.Unsafe().Get(thread, "SELECT * FROM "+THREAD_TABLE+" WHERE id = ?", id)
+	err := db.Get(thread, "SELECT * FROM "+THREAD_TABLE+" WHERE id = ?", id)
 	// TODO: Get points
 	if err == nil {
 		backToUTF(&thread.Forum, &thread.User)
@@ -66,11 +66,11 @@ func (api *RestApi) threadPostCreate(request *restful.Request, response *restful
 	var thread Thread
 	request.ReadEntity(&thread)
 	log.Printf("[ * ] [ THREAD CREATE ] Got thread info: %+v", thread)
-	result, err := thread.Message.InsertIntoDb(api.DbSqlx)
-	if err != nil { pnh(response, API_QUERY_INVALID, err); return }
-	thread.Id, _ = result.LastInsertId()
-	_, err = api.DbSqlx.Exec("INSERT INTO Thread (id, status_is_closed, title, slug) VALUES (?, ?, ?, ?)",
-					thread.Id, thread.IsClosed,  thread.Title, thread.Slug)
+	_, err := api.DbSqlx.Exec(
+		"INSERT INTO Thread (id, status_is_closed, title, slug) VALUES (?, ?, ?, ?, ? , ? , ? , ? , ?)",
+		thread.Id, thread.IsClosed,  thread.Title, thread.Slug,
+		thread.Forum.(string), thread.User.(string), thread.Date, thread.IsDeleted, thread.Message,
+	)
 	if err != nil { pnh(response, API_QUERY_INVALID, err); return }
 	response.WriteEntity(createResponse(API_STATUS_OK, thread))
 }
@@ -107,11 +107,10 @@ func (api *RestApi) threadGetList(request *restful.Request, response *restful.Re
 		ExecListParams{
 			BuildListParams: BuildListParams{
 				request: request,db: api.DbSqlx,
-				selectWhat: "*", selectFromWhat: "Thread", selectWhereColumn: queryColumn,
+				selectWhat: "*", selectFromWhat: THREAD_TABLE, selectWhereColumn: queryColumn,
 				selectWhereWhat: queryParameter, selectWhereIsInnerSelect: false,
 				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-				joinEnabled: true, joinTables: []string{"Message"},
-				joinConditions: []string{"id"}, joinByUsingStatement: true,
+				joinEnabled: false,
 				limitEnabled: true,
 			},
 			resultContainer: &threads,
@@ -247,11 +246,10 @@ func (api *RestApi) threadGetListPosts(request *restful.Request, response *restf
 	BaseParams := ExecListParams {
 		BuildListParams: BuildListParams{
 			request: request, db: api.DbSqlx,
-			selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "thread_id",
+			selectWhat: "*", selectFromWhat: POST_TABLE, selectWhereColumn: "thread_id",
 			selectWhereWhat: request.QueryParameter("thread"),
 			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-			joinEnabled: true, joinTables: []string{"Message"},
-			joinConditions: []string{"id"}, joinByUsingStatement: true,
+			joinEnabled: false,
 			limitEnabled: true,
 		},
 		resultContainer: &posts,
@@ -272,7 +270,6 @@ func (api *RestApi) threadGetListPosts(request *restful.Request, response *restf
 		if posts == nil { posts = []Post{} } else {
 			for _, post := range posts {
 				backToUTF(&post.Forum , &post.User)
-				post.getPoints(api.DbSqlx)
 			}
 		}
 		if result_is_nested_list {
@@ -381,7 +378,7 @@ func (api *RestApi) threadPostVote(request *restful.Request, response *restful.R
 	}
 	request.ReadEntity(&params)
 	var is_like bool = params.Vote > 0;
-	err := voteOnMessageById(params.Thread, is_like, api.DbSqlx)
+	_, err := api.DbSqlx.Query("CALL threadVote(?,?)",params.Thread, is_like)
 	if err != nil {
 		response.WriteEntity(createResponse(API_QUERY_INVALID, err.Error()))
 		return

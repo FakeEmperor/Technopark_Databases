@@ -199,8 +199,7 @@ func (api *RestApi) userGetListPosts(request *restful.Request, response *restful
 				selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "user",
 				selectWhereWhat: request.QueryParameter("user"), selectWhereIsInnerSelect: false,
 				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
-				joinEnabled: true, joinTables: []string{"Message"},
-				joinConditions: []string{"id"}, joinByUsingStatement: true,
+				joinEnabled: false,
 				limitEnabled: true,
 			},
 			resultContainer: &posts,
@@ -211,7 +210,6 @@ func (api *RestApi) userGetListPosts(request *restful.Request, response *restful
 		if (posts == nil ) { posts = []Post{} } else {
 			for _, post := range posts {
 				backToUTF(&post.User, &post.Forum) //super crutch!!
-				post.getPoints(api.DbSqlx)
 			}
 		}
 		response.WriteEntity(createResponse(API_STATUS_OK,posts))
