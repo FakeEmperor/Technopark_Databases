@@ -11,7 +11,7 @@ import (
 
 
 var (
-	DB_MAX_CONNECTIONS int = 100
+	DB_MAX_CONNECTIONS int = 1000
 	// DB_MAX_CONN_LIFETIME time.Duration = time.Second*4
 	DB_MAX_IDLE_CONNS int = 80
 );
