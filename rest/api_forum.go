@@ -180,7 +180,7 @@ func (api *RestApi) forumGetListUsers(request *restful.Request, response *restfu
 	inner_str, inner_vars, _, err := buildListQuery(
 		BuildListParams{
 			request: request, db: api.DbSqlx,
-			selectWhat: "DISTINCT user as 'email'", selectFromWhat: TABLE_POST,
+			selectWhat: "user as 'email'", selectFromWhat: TABLE_POST,
 			selectWhereColumn: "forum",
 			selectWhereWhat: request.QueryParameter("forum"),
 			orderByWhat: "link_user_name",
