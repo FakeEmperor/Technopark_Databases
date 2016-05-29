@@ -106,9 +106,9 @@ func (api *RestApi) userPostFollow(request *restful.Request, response *restful.R
 	}
 	request.ReadEntity(&params)
 	log.Printf("Got user info:\r\n %+v", params)
-	_, err := api.DbSqlx.Exec("INSERT INTO userfollowers (follower, followee) VALUES (?, ?)", params.Follower, params.Followee)
+	_, err := api.DbSqlx.Exec("INSERT INTO "+TABLE_FOLLOWERS+" (follower, followee) VALUES (?, ?)", params.Follower, params.Followee)
 	if err != nil {
-		response.WriteEntity(createResponse(API_QUERY_INVALID, err.Error()))
+		pnh(response, API_UNKNOWN_ERROR, err)
 	} else {
 		response.WriteEntity(createResponse(API_STATUS_OK, params))
 	}
@@ -137,24 +137,41 @@ func (api *RestApi) userGetListFollowers(request *restful.Request, response *res
 	response.WriteEntity(createResponse(API_STATUS_OK, users))
 }
 func (api *RestApi) userGetListFollowing(request *restful.Request, response *restful.Response) {
-	query_str := "SELECT followee FROM userfollowers JOIN user ON user.email = follower WHERE follower = " +
-	"\"" + request.QueryParameter("user") + "\""
-	sinceId := request.QueryParameter("since_id");
-	orderType := request.QueryParameter("order");
-	limit := request.QueryParameter("limit");
-	if orderType == "" { orderType = "desc" }
-	if  sinceId != "" { query_str += " AND id >= " + sinceId }
-	query_str += " ORDER BY follower " + orderType
-	if limit != "" {
-		query_str += " LIMIT " + limit
+	var users []FilledUser;
+	subquery, params, _, err := buildListQuery(BuildListParams {
+		db: api.DbSqlx, request: request,
+		selectWhat: "followee as 'email'", selectFromWhat: "UserFollowers",
+		selectWhereColumn: "follower", selectWhereWhat: request.QueryParameter("user"),
+		selectWhereIsInnerSelect: false, joinEnabled: false,
+	})
+	if err != nil {
+		pnh(response, API_UNKNOWN_ERROR, err);
+		return;
 	}
-	var emails []string
-	api.DbSqlx.Select(&emails, query_str)
-	users := make([]*FilledUser, len(emails))
-	for index, email := range emails {
-		users[index], _ = userByEmail(email, api.DbSqlx)
+	execListQuery(ExecListParams{
+		BuildListParams: BuildListParams{
+			request: request,  db: api.DbSqlx,
+			selectWhat: "*", selectFromWhat: "User", selectWhereColumn: "id",
+			selectWhereCustomOp: ">=",
+			selectWhereWhat: request.QueryParameter("user"), selectWhereIsInnerSelect: false,
+			sinceParamName: "since_id", sinceByWhat: "id",
+			joinEnabled: true, joinTables: []string{ nameSubqueryTable(subquery, "Subs")},
+			joinByUsingStatement: true, joinConditions: []string{"email"},
+			joinPlaceholderParams: [][]interface{}{params},
+			orderByWhat: "",
+			limitEnabled: true,
+		},
+		resultContainer: &users,
+	})
+	if err != nil {
+		pnh(response, API_UNKNOWN_ERROR, err);
+	} else {
+		for i, _ := range users {
+			users[i].GetFollowersSubscriptions(api.DbSqlx)
+		}
+		response.WriteEntity(createResponse(API_STATUS_OK, users))
 	}
-	response.WriteEntity(createResponse(API_STATUS_OK, users))
+
 }
 
 
@@ -164,10 +181,10 @@ func (api *RestApi) userPostUnfollow(request *restful.Request, response *restful
 		Followee string `json:"followee"`
 	}
 	request.ReadEntity(&params)
-	api.DbSqlx.Exec("DELETE FROM userfollowers WHERE follower = ? AND followee = ?", params.Follower, params.Followee)
+	_, err := api.DbSqlx.Query("CALL user_unfollow(?,?)", params.Follower, params.Followee);
 	usr, err := userByEmail(params.Follower, api.DbSqlx);
 	if err != nil {
-		response.WriteEntity(createResponse(API_QUERY_INVALID, err.Error()))
+		pnh(response, API_UNKNOWN_ERROR, err)
 	} else {
 		response.WriteEntity(createResponse(API_STATUS_OK, usr))
 	}
@@ -180,10 +197,10 @@ func (api *RestApi) userPostUpdateProfile(request *restful.Request, response *re
 		Name  string `json:"name"`
 	}
 	request.ReadEntity(&params)
-	api.DbSqlx.Exec("UPDATE user SET about = ?, name = ? WHERE email = ?", params.About, params.Name, params.User)
+	api.DbSqlx.Exec("UPDATE User SET about = ?, name = ? WHERE email = ?", params.About, params.Name, params.User)
 	usr, err := userByEmail(params.User, api.DbSqlx);
 	if err != nil {
-		response.WriteEntity(createResponse(API_QUERY_INVALID, err.Error()))
+		pnh(response, API_QUERY_INVALID, err)
 	} else {
 		response.WriteEntity(createResponse(API_STATUS_OK, usr))
 	}
@@ -196,7 +213,7 @@ func (api *RestApi) userGetListPosts(request *restful.Request, response *restful
 		ExecListParams{
 			BuildListParams: BuildListParams{
 				request: request,  db: api.DbSqlx,
-				selectWhat: "*", selectFromWhat: "Post", selectWhereColumn: "user",
+				selectWhat: "*", selectFromWhat: TABLE_POST, selectWhereColumn: "user",
 				selectWhereWhat: request.QueryParameter("user"), selectWhereIsInnerSelect: false,
 				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
 				joinEnabled: false,
@@ -205,7 +222,7 @@ func (api *RestApi) userGetListPosts(request *restful.Request, response *restful
 			resultContainer: &posts,
 		})
 	if err != nil {
-		response.WriteEntity(createResponse(API_QUERY_INVALID,err.Error()))
+		pnh(response, API_QUERY_INVALID, err)
 	} else {
 		if (posts == nil ) { posts = []Post{} } else {
 			for _, post := range posts {

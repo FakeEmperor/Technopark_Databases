@@ -15,8 +15,11 @@ type Status struct {
 
 func (api *RestApi) commonPostClear(request *restful.Request, response *restful.Response) {
 	truncate_tables := []string{
-		"UserSubscription",  "UserFollowers", "UserMessageRate",
-		"Post", "Thread", "Message", "Forum", "User" }
+		TABLE_FORUM,
+		TABLE_USER, TABLE_FOLLOWERS,
+		TABLE_POST_RATES, TABLE_POST,
+		TABLE_SUBS, TABLE_THREAD_RATES, TABLE_THREAD,
+	}
 	log.Print("[ D ] Requested CLEAR...")
 	errs := make([]error, len(truncate_tables))
 	hasError := false
@@ -45,10 +48,10 @@ func (api *RestApi) commonGetStatus(request *restful.Request, response *restful.
 	status:= Status{}
 	var err error
 	tables := map[string]*int{
-		USER_TABLE : &status.Users,
-		FORUM_TABLE : &status.Forums,
-		POST_TABLE : &status.Posts,
-		THREAD_TABLE : &status.Threads,
+		TABLE_USER : &status.Users,
+		TABLE_FORUM : &status.Forums,
+		TABLE_POST : &status.Posts,
+		TABLE_THREAD : &status.Threads,
 	}
 	for name, result_addr := range tables {
 		if DIRTY_USE_ESTIMATION {

@@ -22,6 +22,7 @@ type Post struct {
 	Parent        *int64			`json:"parent" db:"parent_id"`
 	Thread        interface{}		`json:"thread" db:"thread_id"`		/* Can be struct or int*/
 	MPath	      sql.NullString		`json:"-" db:"material_path"`
+	UserLinkName  sql.NullString		`json:"-" db:"link_user_name"`
 	*Message
 }
 
@@ -54,7 +55,7 @@ func (post *Post) addMaterializedPath(db *sqlx.DB) (error) {
 	var mp sql.NullString
 	var pid string = MaterializedPathTerm(post.Id)
 	if post.Parent != nil {
-		err := db.Get(&mp, "SELECT material_path FROM Post WHERE id = ?", *post.Parent)
+		err := db.Get(&mp, "SELECT material_path FROM "+TABLE_POST+" WHERE id = ?", *post.Parent)
 		if err != nil {
 			return err
 		} else {
@@ -68,7 +69,7 @@ func (post *Post) addMaterializedPath(db *sqlx.DB) (error) {
 		log.Print("[ W ] Calling addMaterializedPath() on post with no parent")
 		mp.String = pid
 	}
-	_, err := db.Exec("UPDATE Post SET material_path = ? WHERE id = ?", mp.String, post.Id)
+	_, err := db.Exec("UPDATE "+TABLE_POST+" SET material_path = ? WHERE id = ?", mp.String, post.Id)
 	return err
 }
 
@@ -96,7 +97,7 @@ func (api *RestApi) registerPostApi() {
 
 func postById(id int64, db *sqlx.DB) (*Post, error) {
 	post := new(Post)
-	err:= db.Get(post, "SELECT * FROM "+POST_TABLE+" WHERE id = ?", id)
+	err:= db.Get(post, "SELECT * FROM "+ TABLE_POST +" WHERE id = ?", id)
 	return post, err
 }
 
@@ -108,12 +109,12 @@ func (api *RestApi) postPostCreate(request *restful.Request, response *restful.R
 	if post.Thread != nil { post.Thread, _ = post.Thread.(json.Number).Int64() }
 	/////////////////
 
-	_, err := api.DbSqlx.Exec(
-		"INSERT INTO Post (status_is_approved, status_is_edited, status_is_highlighted, status_is_spam, parent_id, thread_id, forum, user, date, status_is_deleted, message)" +
-		" VALUES (?, ?, ?, ?, ?, ?, ?, ? , ? , ? , ? , ?)",
-		post.Id, post.IsApproved, post.IsEdited, post.IsHighlighted,
-		post.IsSpam, post.Parent, post.Thread,
-		post.Forum.(string), post.User.(string), post.Date, post.IsDeleted, post.Message,
+	err := api.DbSqlx.Get(
+		&post.Id,
+		"CALL post_create(?, ?, ?, ?, ?, ?,    ?, ?, ?, ?, ?, ? )",
+		post.User.(string), post.Forum.(string), post.Date, post.Message.Message, post.Parent, post.Thread.(int64),
+		post.MPath,
+		post.IsDeleted, post.IsEdited, post.IsSpam, post.IsHighlighted, post.IsApproved,
 	)
 	if err != nil { pnh(response, API_UNKNOWN_ERROR, err) } else {
 		response.WriteEntity(createResponse(API_STATUS_OK, post))
@@ -130,8 +131,12 @@ func (api *RestApi) postGetDetails(request *restful.Request, response *restful.R
 	if  err != nil {
 		pnh(response, API_NOT_FOUND, err)
 	} else {
+		backToUTF(&post.Forum)
+		backToUTF(&post.User)
 		for _, entity := range request.Request.URL.Query()["related"] {
+
 			if entity == "user" && post.User != nil {
+
 				post.User, _ = userByEmail(post.User.(string), api.DbSqlx)
 			} else if entity == "thread" && post.Thread != nil {
 				post.Thread, _ = threadById(post.Thread.(int64), api.DbSqlx)
@@ -155,7 +160,7 @@ func (api *RestApi) postGetList(request *restful.Request, response *restful.Resp
 		ExecListParams{
 			BuildListParams: BuildListParams {
 				request: request, db: api.DbSqlx,
-				selectWhat: "*", selectFromWhat: POST_TABLE, selectWhereColumn: queryColumn,
+				selectWhat: "*", selectFromWhat: TABLE_POST, selectWhereColumn: queryColumn,
 				selectWhereWhat: queryParameter, selectWhereIsInnerSelect: false,
 				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
 				joinEnabled: false,
@@ -183,7 +188,7 @@ func (api *RestApi) postSetDeleted(request *restful.Request, response *restful.R
 		Post int64 `json:"post"`
 	}
 	request.ReadEntity(&params)
-	_, err := api.DbSqlx.Exec("CALL post_delete_restore(?,?)", params.Post, deleted)
+	_, err := api.DbSqlx.Query("CALL post_delete_restore(?,?)", params.Post, deleted)
 	if err != nil { pnh(response, API_UNKNOWN_ERROR, err) } else {
 		response.WriteEntity(createResponse(API_STATUS_OK, params))
 	}
@@ -203,7 +208,7 @@ func (api *RestApi) postPostUpdate(request *restful.Request, response *restful.R
 		Message string `json:"message"`
 	}
 	request.ReadEntity(&params)
-	_ , err := api.DbSqlx.Exec("UPDATE "+POST_TABLE+" SET message = ? WHERE id = ?", params.Message, params.Post)
+	_ , err := api.DbSqlx.Exec("UPDATE "+ TABLE_POST +" SET message = ? WHERE id = ?", params.Message, params.Post)
 	if err != nil { pnh(response, API_UNKNOWN_ERROR, err) } else {
 		post, _ := postById(params.Post, api.DbSqlx)
 		response.WriteEntity(createResponse(API_STATUS_OK, post))

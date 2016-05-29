@@ -6,10 +6,15 @@ import (
 	"github.com/jmoiron/sqlx"
 	"log"
 	"strconv"
+	// "time"
 )
 
 
-
+var (
+	DB_MAX_CONNECTIONS int = 100
+	// DB_MAX_CONN_LIFETIME time.Duration = time.Second*4
+	DB_MAX_IDLE_CONNS int = 80
+);
 
 
 type RestApi struct {
@@ -19,7 +24,7 @@ type RestApi struct {
 	Container *restful.Container
 }
 
-func CreateRestApi() *RestApi {
+func CreateRestApi(dbname string) *RestApi {
 	wsContainer := restful.NewContainer()
 	// Add container filter to enable CORS
 	cors := restful.CrossOriginResourceSharing{
@@ -35,8 +40,13 @@ func CreateRestApi() *RestApi {
 	wsContainer.Filter(globalLogging)
 	var err error
 	api := new(RestApi)
-	api.Db, err = CreateConnector()
+
+	api.Db, err = CreateConnector(dbname)
 	api.DbSqlx = sqlx.NewDb(api.Db, "mysql")
+	api.DbSqlx.SetMaxOpenConns(DB_MAX_CONNECTIONS)
+	//api.DbSqlx.SetConnMaxLifetime(DB_MAX_CONN_LIFETIME)
+	api.DbSqlx.SetMaxIdleConns(DB_MAX_IDLE_CONNS)
+
 	api.Container = wsContainer
 	api.registerCommonApi()
 	api.registerUserApi()

@@ -22,13 +22,13 @@ type Thread struct {
 
 // ---- static functions for Thread
 func threadById(id int64, db *sqlx.DB) (*Thread, error) {
-	thread := new(Thread)
-	err := db.Get(thread, "SELECT * FROM "+THREAD_TABLE+" WHERE id = ?", id)
+	var thread Thread;
+	err := db.Get(&thread, "SELECT * FROM "+ TABLE_THREAD +" WHERE id = ?", id)
 	// TODO: Get points
 	if err == nil {
 		backToUTF(&thread.Forum, &thread.User)
 	}
-	return thread, err
+	return &thread, err
 }
 
 
@@ -66,10 +66,13 @@ func (api *RestApi) threadPostCreate(request *restful.Request, response *restful
 	var thread Thread
 	request.ReadEntity(&thread)
 	log.Printf("[ * ] [ THREAD CREATE ] Got thread info: %+v", thread)
-	_, err := api.DbSqlx.Exec(
-		"INSERT INTO Thread (id, status_is_closed, title, slug) VALUES (?, ?, ?, ?, ? , ? , ? , ? , ?)",
-		thread.Id, thread.IsClosed,  thread.Title, thread.Slug,
-		thread.Forum.(string), thread.User.(string), thread.Date, thread.IsDeleted, thread.Message,
+	err := api.DbSqlx.Get(
+		&thread.Id,
+		"CALL thread_create (?, ?, ?, ?,   ?, ?, ?, ?)",
+		thread.User.(string), thread.Title, thread.Slug,
+		thread.Forum.(string), thread.Date,
+		thread.Message.Message,
+		thread.IsClosed, thread.IsDeleted,
 	)
 	if err != nil { pnh(response, API_QUERY_INVALID, err); return }
 	response.WriteEntity(createResponse(API_STATUS_OK, thread))
@@ -107,7 +110,7 @@ func (api *RestApi) threadGetList(request *restful.Request, response *restful.Re
 		ExecListParams{
 			BuildListParams: BuildListParams{
 				request: request,db: api.DbSqlx,
-				selectWhat: "*", selectFromWhat: THREAD_TABLE, selectWhereColumn: queryColumn,
+				selectWhat: "*", selectFromWhat: TABLE_THREAD, selectWhereColumn: queryColumn,
 				selectWhereWhat: queryParameter, selectWhereIsInnerSelect: false,
 				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
 				joinEnabled: false,
@@ -246,7 +249,7 @@ func (api *RestApi) threadGetListPosts(request *restful.Request, response *restf
 	BaseParams := ExecListParams {
 		BuildListParams: BuildListParams{
 			request: request, db: api.DbSqlx,
-			selectWhat: "*", selectFromWhat: POST_TABLE, selectWhereColumn: "thread_id",
+			selectWhat: "*", selectFromWhat: TABLE_POST, selectWhereColumn: "thread_id",
 			selectWhereWhat: request.QueryParameter("thread"),
 			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
 			joinEnabled: false,
@@ -312,9 +315,13 @@ func (api *RestApi) threadPostSubscribe(request *restful.Request, response *rest
 		Thread int    `json:"thread"`
 	}
 	request.ReadEntity(&params)
-	api.DbSqlx.Exec("INSERT INTO UserSubscription (user, thread_id) VALUES (?, ?)",
+	_, err := api.DbSqlx.Query("CALL thread_subscribe(?,?)",
 			params.User, params.Thread)
-	response.WriteEntity(createResponse(API_STATUS_OK, params))
+	if err != nil {
+		pnh(response, API_QUERY_INVALID, err)
+	} else {
+		response.WriteEntity(createResponse(API_STATUS_OK, params))
+	}
 }
 
 func (api *RestApi) threadPostUnsubscribe(request *restful.Request, response *restful.Response) {
@@ -323,9 +330,13 @@ func (api *RestApi) threadPostUnsubscribe(request *restful.Request, response *re
 		Thread int    `json:"thread"`
 	}
 	request.ReadEntity(&params)
-	api.DbSqlx.Exec("DELETE FROM UserSubscription WHERE user = ? AND thread_id = ?",
+	_, err := api.DbSqlx.Query("CALL thread_unsubscribe(?,?)",
 			params.User, params.Thread)
-	response.WriteEntity(createResponse(API_STATUS_OK, params))
+	if err != nil {
+		pnh(response, API_QUERY_INVALID, err)
+	} else {
+		response.WriteEntity(createResponse(API_STATUS_OK, params))
+	}
 }
 
 func (api *RestApi) threadPostUpdate(request *restful.Request, response *restful.Response) {
@@ -335,19 +346,25 @@ func (api *RestApi) threadPostUpdate(request *restful.Request, response *restful
 		Thread  int64    `json:"thread"`
 	}
 	request.ReadEntity(&params)
-	api.DbSqlx.Exec("UPDATE Message, Thread SET Message.message = ?, Thread.slug = ? WHERE Thread.id = ? AND Message.id = ?",
-			params.Message, params.Slug, params.Thread, params.Thread)
+	_, err := api.DbSqlx.Exec("UPDATE "+TABLE_THREAD+" SET message = ?, slug = ? WHERE id = ?",
+			params.Message, params.Slug, params.Thread)
+	if err != nil {
+		pnh(response, API_UNKNOWN_ERROR, err);
+		return ;
+	}
 	thread, _ := threadById(params.Thread, api.DbSqlx)
 	response.WriteEntity(createResponse(API_STATUS_OK, thread))
 }
 
 
-func (api *RestApi) threadPostOpen(request *restful.Request, response *restful.Response) {
+func threadOpenClose(openTrueCloseFalse bool, db *sqlx.DB, request *restful.Request, response *restful.Response) {
 	var params struct {
 		Thread int `json:"thread"`
 	}
 	request.ReadEntity(&params)
-	result, err := api.DbSqlx.Exec("UPDATE Thread SET status_is_closed = false WHERE id = ?", params.Thread)
+	result, err := db.Exec(
+		"UPDATE "+TABLE_THREAD+" SET status_is_closed = ? WHERE id = ?",
+		!openTrueCloseFalse, params.Thread)
 	if err != nil {
 		stat := API_UNKNOWN_ERROR
 		rows, _ := result.RowsAffected()
@@ -356,17 +373,13 @@ func (api *RestApi) threadPostOpen(request *restful.Request, response *restful.R
 	} else { response.WriteEntity(createResponse(API_STATUS_OK, params)) }
 }
 
+func (api *RestApi) threadPostOpen(request *restful.Request, response *restful.Response) {
+	threadOpenClose(true, api.DbSqlx, request, response)
+
+}
+
 func (api *RestApi) threadPostClose(request *restful.Request, response *restful.Response) {
-	var params struct {
-		Thread int `json:"thread"`
-	}
-	request.ReadEntity(&params)
-	_, err := api.DbSqlx.Exec("UPDATE thread SET status_is_closed = true WHERE id = ?", params.Thread)
-	if err != nil {
-		response.WriteEntity(createResponse(API_QUERY_INVALID, err.Error()))
-		return
-	}
-	response.WriteEntity(createResponse(API_STATUS_OK, params))
+	threadOpenClose(false, api.DbSqlx, request, response)
 }
 
 // TODO: Change it
@@ -378,7 +391,7 @@ func (api *RestApi) threadPostVote(request *restful.Request, response *restful.R
 	}
 	request.ReadEntity(&params)
 	var is_like bool = params.Vote > 0;
-	_, err := api.DbSqlx.Query("CALL threadVote(?,?)",params.Thread, is_like)
+	_, err := api.DbSqlx.Query("CALL thread_vote(?,?)",params.Thread, is_like)
 	if err != nil {
 		response.WriteEntity(createResponse(API_QUERY_INVALID, err.Error()))
 		return

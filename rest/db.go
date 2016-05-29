@@ -10,23 +10,31 @@ import (
 	"log"
 	"github.com/jmoiron/sqlx"
 	"strconv"
+	"fmt"
 )
 
 var (
+	DB_FUNCTIONAL = "tpdb_test"
+	DB_PERFORMANCE = "tpdb"
 
-POST_TABLE = "post_merged";
-THREAD_TABLE = "thread_merged";
-USER_TABLE = "User";
-FORUM_TABLE = "Forum";
-SUBS_TABLE = "UserSubscriptions";
-FOLWS_TABLE = "UserFollowers";
-POST_RATES_TABLE = "post_rate";
-THREAD_RATES_TABLE = "thread_rate";
-DIRTY_USE_ESTIMATION = false;
+
+	TABLE_POST = "post_merged";
+	TABLE_THREAD = "thread_merged";
+
+	TABLE_USER = "User";
+
+	TABLE_FORUM = "Forum";
+
+	TABLE_SUBS = "UserSubscription";
+	TABLE_FOLLOWERS = "UserFollowers";
+	TABLE_POST_RATES = "post_rate";
+	TABLE_THREAD_RATES = "thread_rate";
+
+	DIRTY_USE_ESTIMATION = false;
 )
 
-func CreateConnector() (*sql.DB, error) {
-	db_connector, err:= sql.Open("mysql", "tpdb_admin:Lalka123@tcp(127.0.0.1:3306)/tpdb")
+func CreateConnector(dbname string) (*sql.DB, error) {
+	db_connector, err:= sql.Open("mysql", "tpdb_admin:Lalka123@tcp(127.0.0.1:3306)/"+dbname)
 	return db_connector, err;
 }
 
@@ -89,6 +97,10 @@ func GetOrderFromQuery( request *restful.Request) (string) {
 	order_str := strings.ToUpper(request.QueryParameter("order"))
 	if order_str  == "" { order_str = ORDER_DESC }
 	return order_str;
+}
+
+func nameSubqueryTable( subquery string, tableName string) string {
+	return fmt.Sprintf("(%s) as %s", subquery, tableName)
 }
 
 func buildListQuery(param BuildListParams) (string, []interface{}, []string, error) {

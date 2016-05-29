@@ -32,6 +32,9 @@ func (api *RestApi) registerForumApi() {
 func forumByShortName(shortName string, db *sqlx.DB) (*Forum, error ) {
 	forum := new(Forum)
 	err := db.Get(forum, "SELECT * FROM Forum WHERE short_name = ?", shortName)
+	if err != nil {
+		return nil, err
+	}
 	forum.User = string(forum.User.([]uint8))
 	return forum, err
 }
@@ -87,7 +90,7 @@ func (api *RestApi) forumGetListPosts(request *restful.Request, response *restfu
 		ExecListParams{
 			BuildListParams: BuildListParams {
 				request: request,  db: api.DbSqlx,
-				selectWhat: "*", selectFromWhat: POST_TABLE, selectWhereColumn: "forum",
+				selectWhat: "*", selectFromWhat: TABLE_POST, selectWhereColumn: "forum",
 				selectWhereWhat: request.QueryParameter("forum"), selectWhereIsInnerSelect: false,
 				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
 				joinEnabled: false,
@@ -131,7 +134,7 @@ func (api *RestApi) forumGetListThreads(request *restful.Request, response *rest
 		ExecListParams{
 			BuildListParams: BuildListParams {
 				request: request,  db: api.DbSqlx,
-				selectWhat: "*", selectFromWhat: THREAD_TABLE, selectWhereColumn: "forum",
+				selectWhat: "*", selectFromWhat: TABLE_THREAD, selectWhereColumn: "forum",
 				selectWhereWhat: request.QueryParameter("forum"), selectWhereIsInnerSelect: false,
 				sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
 				joinEnabled: false,
@@ -177,7 +180,7 @@ func (api *RestApi) forumGetListUsers(request *restful.Request, response *restfu
 	inner_str, inner_vars, _, err := buildListQuery(
 		BuildListParams{
 			request: request, db: api.DbSqlx,
-			selectWhat: "user as 'email'", selectFromWhat: POST_TABLE,
+			selectWhat: "DISTINCT user as 'email'", selectFromWhat: TABLE_POST,
 			selectWhereColumn: "forum",
 			selectWhereWhat: request.QueryParameter("forum"),
 			orderByWhat: "link_user_name",
@@ -194,13 +197,12 @@ func (api *RestApi) forumGetListUsers(request *restful.Request, response *restfu
 				selectWhat: "User.*", selectFromWhat: "User",
 				selectWhereColumn: "", selectWhereWhat: "",
 				selectWhereIsInnerSelect: false,
-				joinEnabled: true, joinTables: []string{
-					"(" + inner_str + ") as Emails",
-				},
+				joinEnabled: true, joinTables: []string{ nameSubqueryTable(inner_str, "Emails") },
 				joinConditions: []string{"email"},
 				joinByUsingStatement: true,
 				joinPlaceholderParams: [][]interface{}{inner_vars},
 				limitEnabled: false,
+				orderByWhat: "name", // OPTIMIZE CHEK IT
 			},
 			resultContainer: &users,
 		})

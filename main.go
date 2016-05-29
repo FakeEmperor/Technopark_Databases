@@ -52,7 +52,7 @@ var LOG_ENABLED = true;
 
 func main() {
 	if LOG_ENABLED {
-		f, err := os.OpenFile(LOG_PATH, os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
+		f, err := os.OpenFile(LOG_PATH, os.O_WRONLY | os.O_CREATE | os.O_APPEND | os.O_SYNC, 0644)
 		if err != nil {
 			log.Printf("[ ERROR ] Couldn't open log file: %s\nERROR: %s", LOG_PATH, err.Error())
 		} else {
@@ -61,7 +61,9 @@ func main() {
 		defer f.Close()
 	}
 	log.Printf("[ * ] Checking database connection...")
-	conn, err := rest.CreateConnector()
+
+	dbname := rest.DB_FUNCTIONAL
+	conn, err := rest.CreateConnector(dbname)
 	db_err_string := "[ ERROR ] Could not connect to the database.\nError:%s"
 	if (err != nil) {
 		log.Panic(db_err_string, err)
@@ -73,7 +75,7 @@ func main() {
 	}
 
 	log.Printf("[ * ] Loading router...")
-	restApi := rest.CreateRestApi()
+	restApi := rest.CreateRestApi(dbname)
 	log.Printf("[ * ] Beggining to listen on localhost:8080")
 
 	if !LOG_ENABLED {
