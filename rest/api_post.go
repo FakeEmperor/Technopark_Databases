@@ -151,12 +151,23 @@ func (api *RestApi) postGetDetails(request *restful.Request, response *restful.R
 
 
 func (api *RestApi) postGetList(request *restful.Request, response *restful.Response) {
-	var ( queryColumn string; queryParameter string; )
+	var (
+		queryColumn string;
+		queryParameter interface{};
+		err error;
+	)
 	if forum := request.QueryParameter("forum"); forum != "" {
 		queryColumn = "forum"; queryParameter = forum
-	} else { queryColumn = "thread_id"; queryParameter = request.QueryParameter("thread") }
+	} else {
+		queryColumn = "thread_id";
+		queryParameter, err = strconv.Atoi(request.QueryParameter("thread"))
+		if (err != nil) {
+			pnh(response, API_QUERY_INVALID, err)
+		}
+
+	}
 	var posts []Post;
-	_, err := execListQuery(
+	_, err = execListQuery(
 		ExecListParams{
 			BuildListParams: BuildListParams {
 				request: request, db: api.DbSqlx,

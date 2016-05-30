@@ -56,7 +56,7 @@ type BuildListParams struct {
 	selectWhat               string
 	selectFromWhat           string
 	selectWhereColumn        string
-	selectWhereWhat          string
+	selectWhereWhat          interface{}
 	selectWhereIsInnerSelect bool
 	selectWhereCustomOp      string
 
@@ -130,7 +130,7 @@ func buildListQuery(param BuildListParams) (string, []interface{}, []string, err
 		var op string;
 		// CASE FOR INNER SELECT
 		if param.selectWhereIsInnerSelect {
-			op = "IN ( " + param.selectWhereWhat + ")"
+			op = "IN ( " + param.selectWhereWhat.(string) + ")"
 		} else {
 			// CASE FOR STRAIGHT WHERE
 			if param.selectWhereCustomOp != "" {
