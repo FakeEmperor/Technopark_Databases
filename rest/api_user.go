@@ -105,7 +105,7 @@ func (api *RestApi) userPostFollow(request *restful.Request, response *restful.R
 		Followee string `json:"followee"`
 	}
 	request.ReadEntity(&params)
-	log.Printf("Got user info:\r\n %+v", params)
+	log.Printf("[ L ] [ USER FOLLOW ]: %+v", params)
 	_, err := api.DbSqlx.Exec("INSERT INTO "+TABLE_FOLLOWERS+" (follower, followee) VALUES (?, ?)", params.Follower, params.Followee)
 	if err != nil {
 		pnh(response, API_UNKNOWN_ERROR, err)
@@ -181,6 +181,7 @@ func (api *RestApi) userPostUnfollow(request *restful.Request, response *restful
 		Followee string `json:"followee"`
 	}
 	request.ReadEntity(&params)
+	log.Printf("[ L ] [ USER UNFOLLOW ]: %+v", params)
 	_, err := api.DbSqlx.Query("CALL user_unfollow(?,?)", params.Follower, params.Followee);
 	usr, err := userByEmail(params.Follower, api.DbSqlx);
 	if err != nil {
@@ -197,12 +198,17 @@ func (api *RestApi) userPostUpdateProfile(request *restful.Request, response *re
 		Name  string `json:"name"`
 	}
 	request.ReadEntity(&params)
-	api.DbSqlx.Exec("UPDATE User SET about = ?, name = ? WHERE email = ?", params.About, params.Name, params.User)
-	usr, err := userByEmail(params.User, api.DbSqlx);
+	log.Printf("[ L ] [ USER PROFILE UPDATE ]: %+v", params)
+	_, err := api.DbSqlx.Exec("UPDATE User SET about = ?, name = ? WHERE email = ?", params.About, params.Name, params.User)
+	if err != nil {
+		pnh(response, API_QUERY_INVALID, err)
+		return;
+	}
+	// usr, err := userByEmail(params.User, api.DbSqlx); // <-- HACK
 	if err != nil {
 		pnh(response, API_QUERY_INVALID, err)
 	} else {
-		response.WriteEntity(createResponse(API_STATUS_OK, usr))
+		response.WriteEntity(createResponse(API_STATUS_OK, params)) // <-- HACK
 	}
 }
 

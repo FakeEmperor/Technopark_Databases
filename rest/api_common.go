@@ -15,10 +15,10 @@ type Status struct {
 
 func (api *RestApi) commonPostClear(request *restful.Request, response *restful.Response) {
 	truncate_tables := []string{
-		TABLE_FORUM,
+		TABLE_FORUM, TABLE_POST_RATES, TABLE_POST,
 		TABLE_USER, TABLE_FOLLOWERS,
-		TABLE_POST_RATES, TABLE_POST,
 		TABLE_SUBS, TABLE_THREAD_RATES, TABLE_THREAD,
+		TABLE_POST_USERS,
 	}
 	log.Print("[ D ] Requested CLEAR...")
 	errs := make([]error, len(truncate_tables))
@@ -30,16 +30,19 @@ func (api *RestApi) commonPostClear(request *restful.Request, response *restful.
 		if (err != nil) { hasError = true }
 		errs[index] = err
 	}
-	tr.Commit()
+
 	if hasError {
 		log.Print("[ !!! ] Error: during clear there was an error!")
 		msg := "Errors: "
 		for _, err := range errs {
 			if err != nil { msg+=" "+ err.Error() +", \n" 	}
 		}
-		response.WriteEntity(createResponse(API_UNKNOWN_ERROR, msg))
-
+		pnh(response, API_UNKNOWN_ERROR, err)
 	} else {
+		err = tr.Commit()
+		if err != nil {
+			pnh(response, API_UNKNOWN_ERROR, err)
+		}
 		response.WriteEntity(createResponse(API_STATUS_OK, "OK"));
 	}
 }

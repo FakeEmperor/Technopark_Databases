@@ -177,32 +177,19 @@ func (api *RestApi) forumGetListUsers(request *restful.Request, response *restfu
 			joinByUsingStatement: false,
 			limitEnabled: true } )
 	*/ // OLD
-	inner_str, inner_vars, _, err := buildListQuery(
-		BuildListParams{
-			request: request, db: api.DbSqlx,
-			selectWhat: "DISTINCT user as 'email', link_user_name", selectFromWhat: TABLE_POST,
-			selectWhereColumn: "forum",
-			selectWhereWhat: request.QueryParameter("forum"),
-			orderByWhat: "link_user_name",
-			limitEnabled: true,
-			joinEnabled: false,
-		},
-	);
-	if err != nil { pnh(response, 5, err); }
-
-	_, err = execListQuery(
+	log.Printf("[FORUM : LIST USERS]: %s", request.QueryParameter("forum"))
+	_, err := execListQuery(
 		ExecListParams{
 			BuildListParams: BuildListParams{
 				request: request, db: api.DbSqlx,
 				selectWhat: "User.*", selectFromWhat: "User",
-				selectWhereColumn: "", selectWhereWhat: "",
+				selectWhereColumn: "p.post_count > 0 AND p.forum", selectWhereWhat: request.QueryParameter("forum"),
 				selectWhereIsInnerSelect: false,
-				joinEnabled: true, joinTables: []string{ nameSubqueryTable(inner_str, "Emails") },
-				joinConditions: []string{"email"},
-				joinByUsingStatement: true,
-				joinPlaceholderParams: [][]interface{}{inner_vars},
-				limitEnabled: false,
-				orderByWhat: "name", // OPTIMIZE CHEK IT
+				joinEnabled: true, joinTables: []string{ "post_users as p" },
+				joinConditions: []string{"(name = p.user_name OR p.user_name IS NULL) AND email = p.user"},
+				joinByUsingStatement: false,
+				limitEnabled: true,
+				orderByWhat: "p.user_name", // OPTIMIZE: CHECK IT
 			},
 			resultContainer: &users,
 		})
@@ -216,7 +203,7 @@ func (api *RestApi) forumGetListUsers(request *restful.Request, response *restfu
 	if len(users) == 0 {
 		users = []FilledUser{}
 	}
-	response.WriteEntity(createResponse(0, users))
+	response.WriteEntity(createResponse(API_STATUS_OK, users))
 }
 
 

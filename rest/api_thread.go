@@ -320,6 +320,7 @@ func (api *RestApi) threadPostSubscribe(request *restful.Request, response *rest
 		Thread int    `json:"thread"`
 	}
 	request.ReadEntity(&params)
+	log.Printf("[ L ] [ THREAD SUBSCRIBE ]: %+v", params)
 	_, err := api.DbSqlx.Query("CALL thread_subscribe(?,?)",
 			params.User, params.Thread)
 	if err != nil {
@@ -335,6 +336,7 @@ func (api *RestApi) threadPostUnsubscribe(request *restful.Request, response *re
 		Thread int    `json:"thread"`
 	}
 	request.ReadEntity(&params)
+	log.Printf("[ L ] [ THREAD UNSUBSCRIBE ]: %+v", params)
 	_, err := api.DbSqlx.Query("CALL thread_unsubscribe(?,?)",
 			params.User, params.Thread)
 	if err != nil {

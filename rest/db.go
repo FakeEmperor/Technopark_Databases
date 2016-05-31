@@ -30,6 +30,8 @@ var (
 	TABLE_POST_RATES = "post_rate";
 	TABLE_THREAD_RATES = "thread_rate";
 
+	TABLE_POST_USERS = "post_users";
+
 	DIRTY_USE_ESTIMATION = false;
 )
 
