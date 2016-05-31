@@ -27,7 +27,7 @@ func (api *RestApi) commonPostClear(request *restful.Request, response *restful.
 	tr, err := api.DbSqlx.Begin()
 	if err != nil { pnh(response, API_UNKNOWN_ERROR, err); return; }
 	for index, table := range truncate_tables {
-		_, err := tr.Exec("DELETE FROM " + table)
+		_, err := tr.Exec("TRUNCATE " + table)
 		if (err != nil) { hasError = true }
 		errs[index] = err
 	}

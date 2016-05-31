@@ -182,7 +182,7 @@ func (api *RestApi) forumGetListUsers(request *restful.Request, response *restfu
 		ExecListParams{
 			BuildListParams: BuildListParams{
 				request: request, db: api.DbSqlx,
-				selectWhat: "User.*", selectFromWhat: "User FORCE INDEX (name_user_idx)",
+				selectWhat: "User.*", selectFromWhat: "User FORCE INDEX (name_email_idx)",
 				selectWhereColumn: "p.post_count > 0 AND p.forum", selectWhereWhat: request.QueryParameter("forum"),
 				selectWhereIsInnerSelect: false,
 				joinEnabled: true, joinTables: []string{ "post_users as p" },
