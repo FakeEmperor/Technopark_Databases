@@ -3,6 +3,7 @@ package rest
 import (
 	"github.com/emicklei/go-restful"
 	"log"
+	"errors"
 )
 
 type Status struct {
@@ -37,7 +38,7 @@ func (api *RestApi) commonPostClear(request *restful.Request, response *restful.
 		for _, err := range errs {
 			if err != nil { msg+=" "+ err.Error() +", \n" 	}
 		}
-		pnh(response, API_UNKNOWN_ERROR, err)
+		pnh(response, API_UNKNOWN_ERROR, errors.New(msg))
 	} else {
 		err = tr.Commit()
 		if err != nil {
