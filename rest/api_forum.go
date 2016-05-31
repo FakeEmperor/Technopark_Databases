@@ -182,14 +182,14 @@ func (api *RestApi) forumGetListUsers(request *restful.Request, response *restfu
 		ExecListParams{
 			BuildListParams: BuildListParams{
 				request: request, db: api.DbSqlx,
-				selectWhat: "User.*", selectFromWhat: "User",
+				selectWhat: "User.*", selectFromWhat: "User FORCE INDEX (name_user_idx)",
 				selectWhereColumn: "p.post_count > 0 AND p.forum", selectWhereWhat: request.QueryParameter("forum"),
 				selectWhereIsInnerSelect: false,
 				joinEnabled: true, joinTables: []string{ "post_users as p" },
 				joinConditions: []string{"(name = p.user_name OR p.user_name IS NULL) AND email = p.user"},
 				joinByUsingStatement: false,
 				limitEnabled: true,
-				orderByWhat: "p.user_name", // OPTIMIZE: CHECK IT
+				orderByWhat: "User.name", // OPTIMIZE: CHECK IT
 			},
 			resultContainer: &users,
 		})

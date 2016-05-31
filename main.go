@@ -62,7 +62,7 @@ func main() {
 	}
 	log.Printf("[ * ] Checking database connection...")
 
-	dbname := rest.DB_PERFORMANCE
+	dbname := rest.DB_FUNCTIONAL
 	conn, err := rest.CreateConnector(dbname)
 	db_err_string := "[ ERROR ] Could not connect to the database.\nError:%s"
 	if (err != nil) {

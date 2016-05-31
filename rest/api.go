@@ -43,9 +43,9 @@ func CreateRestApi(dbname string) *RestApi {
 
 	api.Db, err = CreateConnector(dbname)
 	api.DbSqlx = sqlx.NewDb(api.Db, "mysql")
-	api.DbSqlx.SetMaxOpenConns(DB_MAX_CONNECTIONS)
+	//api.DbSqlx.SetMaxOpenConns(DB_MAX_CONNECTIONS)
 	//api.DbSqlx.SetConnMaxLifetime(DB_MAX_CONN_LIFETIME)
-	api.DbSqlx.SetMaxIdleConns(DB_MAX_IDLE_CONNS)
+	//api.DbSqlx.SetMaxIdleConns(DB_MAX_IDLE_CONNS)
 
 	api.Container = wsContainer
 	api.registerCommonApi()
