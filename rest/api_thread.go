@@ -5,6 +5,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"log"
 	"strings"
+	"strconv"
 )
 
 
@@ -246,11 +247,15 @@ func (api *RestApi) threadGetListPosts(request *restful.Request, response *restf
 	var sort = strings.ToLower(request.QueryParameter("sort"))
 	log.Printf("[ L ] Listing Posts... [sorting=%s]", sort)
 	var err error;
+	thread_id, err := strconv.Atoi(request.QueryParameter("thread"))
+	if err!=nil {
+		pnh(response, API_QUERY_INVALID, err)
+	}
 	BaseParams := ExecListParams {
 		BuildListParams: BuildListParams{
 			request: request, db: api.DbSqlx,
 			selectWhat: "*", selectFromWhat: TABLE_POST, selectWhereColumn: "thread_id",
-			selectWhereWhat: request.QueryParameter("thread"),
+			selectWhereWhat: thread_id,
 			sinceParamName: "since", sinceByWhat: "date", orderByWhat: "date",
 			joinEnabled: false,
 			limitEnabled: true,
